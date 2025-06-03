@@ -8,7 +8,7 @@
   display: block;
   margin-bottom: 1rem;
 }
-input, select, textarea, button {
+:global(input), :global(select), :global(textarea), :global(button) {
   width: 100%;
   padding: 0.5rem;
   margin-top: 0.25rem;
