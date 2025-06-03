@@ -1,0 +1,17 @@
+/* styles/globals.css */
+
+/* Make form elements full‐width and padded, globally */
+input,
+select,
+textarea,
+button {
+  width: 100%;
+  padding: 0.5rem;
+  margin-top: 0.25rem;
+  font-size: 1rem;
+}
+
+button {
+  margin-top: 1rem;
+  cursor: pointer;
+}
