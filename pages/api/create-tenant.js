@@ -3,7 +3,8 @@ import { sign } from '../../utils/hmac';
 
 // In-memory store: key = tenantId, value = { tenantSecret, personId, roleType, tmdbKey }
 const tenants = {};
-\**
+
+/**
  * API Route: Create a new tenant.
  * Expects JSON body: { personId: string, roleType: "actor" | "director" | "producer", quality: string, tmdbKey: string }
  * Returns: { listUrl, webhookUrl, syncCurl }
