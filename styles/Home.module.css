@@ -1,30 +1,34 @@
+/* styles/Home.module.css */
+
 .container {
   padding: 2rem;
   max-width: 600px;
   margin: 0 auto;
   font-family: Arial, sans-serif;
 }
+
 .form label {
   display: block;
   margin-bottom: 1rem;
 }
-:global(input), :global(select), :global(textarea), :global(button) {
-  width: 100%;
-  padding: 0.5rem;
-  margin-top: 0.25rem;
-  font-size: 1rem;
-}
-button {
-  margin-top: 1rem;
-  cursor: pointer;
-}
+
 .error {
   color: red;
   margin-top: 1rem;
 }
+
 .result {
   margin-top: 2rem;
   background: #f9f9f9;
   padding: 1rem;
   border-radius: 4px;
+}
+
+.result label {
+  font-weight: bold;
+}
+
+.result input,
+.result textarea {
+  margin-bottom: 1rem;
 }
