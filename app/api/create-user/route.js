@@ -12,32 +12,35 @@ export async function POST(request) {
       return Response.json({ error: 'Missing parameters' }, { status: 400 });
     }
 
-    // Create user-specific tenant
+    // Validate TMDb key format (basic check)
+    if (!/^[a-f0-9]{32}$/.test(tmdbKey)) {
+      return Response.json({ error: 'Invalid TMDb API key format' }, { status: 400 });
+    }
+
+    // Create user-specific tenant with minimal Redis footprint
     const tenantSecret = uuidv4().replace(/-/g, '');
     
-    // Save tenant with movieIds as JSON string (not array)
+    // Only store essential data in Redis - lists will be in localStorage
     await saveTenant(userId, { 
       tenantSecret, 
       tmdbKey,
-      movieIds: JSON.stringify([]) // Start with empty array as JSON string
+      createdAt: new Date().toISOString()
     });
 
-    // Build URLs using production domain with protection bypass
+    // Build RSS URL with protection bypass
     const base = 'https://helparr.vercel.app';
-    const listSig = sign(userId, tenantSecret);
-    const webhookSig = sign(`webhook:${userId}`, tenantSecret);
-
+    const rssSig = sign(`rss:${userId}`, tenantSecret);
+    
     const bypassParam = process.env.VERCEL_AUTOMATION_BYPASS_SECRET 
       ? `&x-vercel-protection-bypass=${process.env.VERCEL_AUTOMATION_BYPASS_SECRET}` 
       : '';
 
-    const listUrl = `${base}/api/list/${userId}?sig=${listSig}${bypassParam}`;
-    const webhookUrl = `${base}/api/webhook/${userId}?sig=${webhookSig}${bypassParam}`;
+    const rssUrl = `${base}/api/rss/${userId}?sig=${rssSig}${bypassParam}`;
 
-    return Response.json({ listUrl, webhookUrl, tenantSecret }, { status: 200 });
+    return Response.json({ rssUrl, tenantSecret }, { status: 200 });
   } catch (error) {
     console.error('API Error:', error);
-    return Response.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
