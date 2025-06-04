@@ -1,3 +1,4 @@
+// pages/index.jsx
 import { useState, useEffect } from 'react';
 import styles from '../styles/Home.module.css';
 
