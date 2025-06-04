@@ -1,4 +1,4 @@
-// components/ModernHomepage.jsx - enhanced
+// components/ModernHomepage.jsx
 import { useState, useEffect, useCallback } from 'react';
 
 // HMAC-SHA256 signature generation (client-side)
@@ -33,6 +33,7 @@ export default function ModernHomepage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [copySuccess, setCopySuccess] = useState(false); // For copy feedback
   
   // Search states
   const [searchQuery, setSearchQuery] = useState('');
@@ -60,6 +61,16 @@ export default function ModernHomepage() {
       return () => clearTimeout(timer);
     }
   }, [error, success]);
+
+  // Auto-dismiss copy success after 3 seconds
+  useEffect(() => {
+    if (copySuccess) {
+      const timer = setTimeout(() => {
+        setCopySuccess(false);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [copySuccess]);
 
   // Initialize user on mount
   useEffect(() => {
@@ -273,7 +284,7 @@ export default function ModernHomepage() {
     setCurrentView('manage');
   };
 
-  // Update selected movies based on people and roles
+  // Update selected movies based on people and roles (with deduplication)
   const updateSelectedMovies = (peopleList = people) => {
     const allMovies = [];
     const movieIds = new Set();
@@ -428,6 +439,16 @@ export default function ModernHomepage() {
     setSuccess('All data has been reset. You can start fresh!');
   };
 
+  // Copy RSS URL with user feedback
+  const copyRssUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(rssUrl);
+      setCopySuccess(true);
+    } catch (err) {
+      setError('Failed to copy URL to clipboard');
+    }
+  };
+
   // Clear messages
   const clearMessages = () => {
     setError('');
@@ -435,8 +456,8 @@ export default function ModernHomepage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <div className="container mx-auto px-4 py-8 max-w-6xl">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-y-scroll">
+      <div className="container mx-auto px-4 py-8 max-w-6xl"}>
         {/* Header */}
         <header className="text-center mb-8">
           <h1 className="text-4xl md:text-6xl font-bold text-white mb-4 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
@@ -475,7 +496,7 @@ export default function ModernHomepage() {
         )}
 
         {/* Messages */}
-        {(error || success) && (
+        {(error || success || copySuccess) && (
           <div className="mb-6 max-w-2xl mx-auto">
             {error && (
               <div className="bg-red-500/20 border border-red-500 rounded-lg p-4 mb-4 animate-fade-in">
@@ -486,10 +507,18 @@ export default function ModernHomepage() {
               </div>
             )}
             {success && (
-              <div className="bg-green-500/20 border border-green-500 rounded-lg p-4 animate-fade-in">
+              <div className="bg-green-500/20 border border-green-500 rounded-lg p-4 mb-4 animate-fade-in">
                 <div className="flex items-center justify-between">
                   <p className="text-green-200">{success}</p>
                   <button onClick={clearMessages} className="text-green-200 hover:text-white">✕</button>
+                </div>
+              </div>
+            )}
+            {copySuccess && (
+              <div className="bg-blue-500/20 border border-blue-500 rounded-lg p-4 animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <p className="text-blue-200">✅ RSS URL copied to clipboard!</p>
+                  <button onClick={() => setCopySuccess(false)} className="text-blue-200 hover:text-white">✕</button>
                 </div>
               </div>
             )}
@@ -676,10 +705,10 @@ export default function ModernHomepage() {
                       className="flex-1 px-3 py-2 bg-slate-600 border border-slate-500 rounded-l-lg text-white text-sm"
                     />
                     <button
-                      onClick={() => navigator.clipboard.writeText(rssUrl)}
+                      onClick={copyRssUrl}
                       className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-r-lg transition-colors duration-200"
                     >
-                      Copy
+                      {copySuccess ? '✓ Copied!' : 'Copy'}
                     </button>
                   </div>
                   <p className="text-xs text-slate-400 mt-2">
