@@ -84,42 +84,65 @@ export function AdminView() {
 
       {analytics && (
         <div className="space-y-6">
-          {/* Overview Stats */}
+          {/* Enhanced Overview Stats */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <StatCard
               title="Total Users"
               value={analytics.overview.totalUsers}
               icon="👥"
-              subtitle={`${analytics.overview.newUsers} new in period`}
+              subtitle={`${analytics.overview.newUsers} new, ${analytics.overview.activeSessions} active sessions`}
             />
             <StatCard
               title="Page Views"
               value={analytics.overview.totalPageViews}
               icon="👁️"
-              subtitle={`${analytics.overview.uniquePageViews} unique`}
+              subtitle={`${analytics.overview.uniquePageViews} unique pages`}
             />
             <StatCard
-              title="Searches"
+              title="Total Searches"
               value={analytics.overview.totalSearches}
               icon="🔍"
-              subtitle={`${analytics.overview.uniqueQueries} unique queries`}
+              subtitle={`${analytics.overview.peopleSearches} people, ${analytics.overview.collectionSearches} collections`}
             />
             <StatCard
-              title="RSS Feeds"
-              value={analytics.overview.totalRssGenerated}
-              icon="📡"
-              subtitle={`${analytics.overview.activeFeeds} active feeds`}
+              title="Items Added"
+              value={analytics.overview.peopleAdded + analytics.overview.collectionsAdded}
+              icon="➕"
+              subtitle={`${analytics.overview.peopleAdded} people, ${analytics.overview.collectionsAdded} collections`}
             />
           </div>
 
-          {/* Popular Searches */}
+          {/* Search Mode Usage */}
+          <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
+            <h3 className="text-xl font-bold text-white mb-4">🎯 Search Mode Preferences</h3>
+            <div className="grid grid-cols-2 gap-4">
+              {Object.entries(analytics.searchModes).map(([mode, count]) => (
+                <div key={mode} className="text-center p-4 bg-slate-700/30 rounded-lg">
+                  <div className="text-2xl font-bold text-purple-400">{count}</div>
+                  <div className="text-sm text-slate-400 capitalize">
+                    {mode === 'people' ? '👥 People Search' : '🎬 Collections Search'}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-1">
+                    {((count / Object.values(analytics.searchModes).reduce((a, b) => a + b, 0)) * 100).toFixed(1)}%
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Popular Searches - Enhanced */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
               <h3 className="text-xl font-bold text-white mb-4">🔥 Popular Searches</h3>
               <div className="space-y-3">
                 {analytics.popularSearches.slice(0, 10).map((search, index) => (
                   <div key={index} className="flex justify-between items-center">
-                    <span className="text-slate-300 capitalize">{search.query}</span>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs bg-slate-600 text-slate-300 px-2 py-1 rounded">
+                        {search.type === 'people' ? '👥' : '🎬'}
+                      </span>
+                      <span className="text-slate-300">{search.query}</span>
+                    </div>
                     <span className="text-purple-400 font-medium">{search.count}</span>
                   </div>
                 ))}
@@ -127,27 +150,54 @@ export function AdminView() {
             </div>
 
             <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
-              <h3 className="text-xl font-bold text-white mb-4">🎭 Popular People Added</h3>
+              <h3 className="text-xl font-bold text-white mb-4">⭐ Popular Additions</h3>
               <div className="space-y-3">
-                {analytics.popularPeople.slice(0, 10).map((person, index) => (
-                  <div key={index} className="flex justify-between items-center">
-                    <span className="text-slate-300">{person.name}</span>
-                    <span className="text-purple-400 font-medium">{person.count}</span>
-                  </div>
-                ))}
+                {[...analytics.popularPeople, ...analytics.popularCollections]
+                  .sort((a, b) => b.count - a.count)
+                  .slice(0, 10)
+                  .map((item, index) => (
+                    <div key={index} className="flex justify-between items-center">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs bg-slate-600 text-slate-300 px-2 py-1 rounded">
+                          {item.type === 'person' ? '👤' : '🎬'}
+                        </span>
+                        <span className="text-slate-300">{item.name}</span>
+                      </div>
+                      <span className="text-purple-400 font-medium">{item.count}</span>
+                    </div>
+                  ))}
               </div>
             </div>
           </div>
 
-          {/* Event Types */}
+          {/* Collection Types Distribution */}
           <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
-            <h3 className="text-xl font-bold text-white mb-4">📈 Feature Usage</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-              {Object.entries(analytics.eventTypes).map(([event, count]) => (
-                <div key={event} className="text-center">
-                  <div className="text-2xl font-bold text-purple-400">{count}</div>
-                  <div className="text-sm text-slate-400 capitalize">
-                    {event.replace(/_/g, ' ')}
+            <h3 className="text-xl font-bold text-white mb-4">🎬 Collection Search Types</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {Object.entries(analytics.collectionTypes).map(([type, count]) => (
+                <div key={type} className="text-center p-4 bg-slate-700/30 rounded-lg">
+                  <div className="text-2xl mb-2">
+                    {type === 'collection' ? '🎬' : 
+                     type === 'company' ? '🏢' : 
+                     type === 'keyword' ? '🏷️' : 
+                     type === 'genre' ? '🎭' : '📁'}
+                  </div>
+                  <div className="text-xl font-bold text-green-400">{count}</div>
+                  <div className="text-sm text-slate-400 capitalize">{type}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Feature Usage Analysis */}
+          <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
+            <h3 className="text-xl font-bold text-white mb-4">🚀 Feature Usage</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {Object.entries(analytics.featureUsage).map(([feature, count]) => (
+                <div key={feature} className="text-center p-3 bg-slate-700/30 rounded-lg">
+                  <div className="text-lg font-bold text-blue-400">{count}</div>
+                  <div className="text-xs text-slate-400">
+                    {feature.replace(/([A-Z])/g, ' $1').toLowerCase()}
                   </div>
                 </div>
               ))}
@@ -156,12 +206,27 @@ export function AdminView() {
 
           {/* Role Type Distribution */}
           <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
-            <h3 className="text-xl font-bold text-white mb-4">🎬 Role Type Distribution</h3>
+            <h3 className="text-xl font-bold text-white mb-4">🎭 Popular Roles</h3>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               {Object.entries(analytics.roleTypes).map(([role, count]) => (
-                <div key={role} className="text-center">
+                <div key={role} className="text-center p-4 bg-slate-700/30 rounded-lg">
                   <div className="text-2xl font-bold text-green-400">{count}</div>
                   <div className="text-sm text-slate-400 capitalize">{role}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Event Types */}
+          <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
+            <h3 className="text-xl font-bold text-white mb-4">📈 All Events</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              {Object.entries(analytics.eventTypes).map(([event, count]) => (
+                <div key={event} className="text-center p-3 bg-slate-700/30 rounded-lg">
+                  <div className="text-lg font-bold text-purple-400">{count}</div>
+                  <div className="text-xs text-slate-400">
+                    {event.replace(/_/g, ' ')}
+                  </div>
                 </div>
               ))}
             </div>
@@ -172,22 +237,21 @@ export function AdminView() {
             <h3 className="text-xl font-bold text-white mb-4">⏰ Recent Activity</h3>
             <div className="space-y-3 max-h-80 overflow-y-auto scrollbar-thin">
               {analytics.recentActivity.map((activity, index) => (
-                <div key={index} className="flex justify-between items-center p-3 bg-slate-700/30 rounded">
-                  <div>
-                    <span className="text-slate-300 capitalize">
-                      {activity.eventType.replace(/_/g, ' ')}
-                    </span>
+                <div key={index} className="flex justify-between items-start p-3 bg-slate-700/30 rounded">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-slate-300 capitalize font-medium">
+                        {activity.eventType.replace(/_/g, ' ')}
+                      </span>
+                      {getActivityIcon(activity.eventType)}
+                    </div>
                     {activity.eventData && Object.keys(activity.eventData).length > 0 && (
                       <div className="text-xs text-slate-500 mt-1">
-                        {Object.entries(activity.eventData).slice(0, 2).map(([key, value]) => (
-                          <span key={key} className="mr-2">
-                            {key}: {typeof value === 'string' ? value.substring(0, 30) : value}
-                          </span>
-                        ))}
+                        {formatActivityData(activity.eventData)}
                       </div>
                     )}
                   </div>
-                  <span className="text-xs text-slate-500">
+                  <span className="text-xs text-slate-500 whitespace-nowrap ml-4">
                     {new Date(activity.timestamp).toLocaleString()}
                   </span>
                 </div>
@@ -224,6 +288,36 @@ function StatCard({ title, value, icon, subtitle }) {
       {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
     </div>
   );
+}
+
+function getActivityIcon(eventType) {
+  const icons = {
+    'search_people': '👥',
+    'search_collections': '🎬',
+    'add_person_to_list': '➕👤',
+    'add_collection_to_list': '➕🎬',
+    'filmography_loaded': '🎭',
+    'collection_movies_loaded': '📽️',
+    'search_mode_switch': '🔄',
+    'rss_generated': '📡',
+    'page_view': '👁️',
+    'user_created': '🆕'
+  };
+  return <span className="text-xs">{icons[eventType] || '📊'}</span>;
+}
+
+function formatActivityData(eventData) {
+  const keys = Object.keys(eventData).filter(key => 
+    !['userId', 'sessionId', 'timestamp'].includes(key)
+  );
+  
+  return keys.slice(0, 3).map(key => {
+    const value = eventData[key];
+    const displayValue = typeof value === 'string' ? 
+      value.substring(0, 30) + (value.length > 30 ? '...' : '') : 
+      value;
+    return `${key}: ${displayValue}`;
+  }).join(' • ');
 }
 
 export default AdminView;
