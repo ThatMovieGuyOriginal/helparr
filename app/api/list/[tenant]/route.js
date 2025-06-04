@@ -29,13 +29,26 @@ export async function GET(request, { params }) {
   const url = new URL(request.url);
   const sig = url.searchParams.get('sig') || '';
 
+  console.log('=== LIST REQUEST DEBUG ===');
+  console.log('Tenant ID:', tenantId);
+  console.log('Signature received:', sig);
+  console.log('Full URL:', url.toString());
+
   const tenant = await loadTenant(tenantId);
   if (!tenant) {
+    console.log('ERROR: Tenant not found');
     return Response.json({ error: 'Tenant not found' }, { status: 404 });
   }
 
+  console.log('Tenant found, secret exists:', !!tenant.tenantSecret);
+
   // Verify signature BEFORE returning data
-  if (!verify(tenantId, tenant.tenantSecret, sig)) {
+  // List signatures are generated with just the userId (which equals tenantId)
+  const isValidSig = verify(tenantId, tenant.tenantSecret, sig);
+  console.log('Signature verification result:', isValidSig);
+  
+  if (!isValidSig) {
+    console.log('ERROR: Invalid signature');
     return Response.json({ error: 'Invalid signature' }, { status: 403 });
   }
 
