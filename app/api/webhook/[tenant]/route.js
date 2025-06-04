@@ -1,5 +1,5 @@
 // app/api/webhook/[tenant]/route.js
-import { verify } from '../../../../utils/hmac';
+import { verify } from '../../../../utils/hmac.js';
 import { loadTenant } from '../../../../lib/kv';
 
 export async function POST(request, { params }) {
