@@ -34,7 +34,7 @@ export async function POST(request) {
     const listUrl = `${base}/api/list/${userId}?sig=${listSig}${bypassParam}`;
     const webhookUrl = `${base}/api/webhook/${userId}?sig=${webhookSig}${bypassParam}`;
 
-    return Response.json({ listUrl, webhookUrl }, { status: 200 });
+    return Response.json({ listUrl, webhookUrl, tenantSecret }, { status: 200 });
   } catch (error) {
     console.error('API Error:', error);
     return Response.json({ error: error.message || 'Internal server error' }, { status: 500 });
