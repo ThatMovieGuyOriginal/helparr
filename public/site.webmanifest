@@ -1,0 +1,39 @@
+{
+  "name": "Helparr - Custom Movie Lists for Radarr",
+  "short_name": "Helparr",
+  "description": "Create custom movie lists for Radarr by actor, director, and collection. Perfect for Plex, Jellyfin, and Emby users.",
+  "icons": [
+    {
+      "src": "/favicon-16x16.png",
+      "sizes": "16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#7c3aed",
+  "background_color": "#0f172a",
+  "categories": ["entertainment", "utilities", "productivity"],
+  "lang": "en",
+  "orientation": "portrait-primary"
+}
