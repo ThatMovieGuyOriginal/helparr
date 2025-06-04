@@ -1,142 +1,77 @@
-// pages/index.jsx
-import { useState, useEffect } from 'react';
-import styles from '../styles/Home.module.css';
-
+// Updated frontend component
 export default function Home() {
-  const [personId, setPersonId] = useState('');
-  const [roleType, setRoleType] = useState('actor');
-  const [quality, setQuality] = useState('1080p');
-  const [tmdbKey, setTmdbKey] = useState('');
-  const [storedKey, setStoredKey] = useState('');
-  const [listUrl, setListUrl] = useState('');
+  const [userId, setUserId] = useState('');
+  const [isUserSetup, setIsUserSetup] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState('');
-  const [syncCurl, setSyncCurl] = useState('');
-  const [error, setError] = useState('');
+  const [listUrl, setListUrl] = useState('');
 
-  // On mount, load from localStorage if exists
+  // Initialize user on mount
   useEffect(() => {
-    const saved = localStorage.getItem('tmdbKey');
-    if (saved) {
-      setTmdbKey(saved);
-      setStoredKey(saved);
+    let id = localStorage.getItem('userId');
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem('userId', id);
+    }
+    setUserId(id);
+    
+    // Check if user already has URLs
+    const savedWebhook = localStorage.getItem('webhookUrl');
+    const savedList = localStorage.getItem('listUrl');
+    if (savedWebhook && savedList) {
+      setWebhookUrl(savedWebhook);
+      setListUrl(savedList);
+      setIsUserSetup(true);
     }
   }, []);
 
-  // Whenever tmdbKey changes, update localStorage
-  useEffect(() => {
-    if (tmdbKey) {
-      localStorage.setItem('tmdbKey', tmdbKey);
-      setStoredKey(tmdbKey);
-    }
-  }, [tmdbKey]);
+  async function setupUser() {
+    // One-time user setup
+    const res = await fetch('/api/create-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, tmdbKey }),
+    });
+    
+    const { webhookUrl, listUrl } = await res.json();
+    
+    // Store URLs locally
+    localStorage.setItem('webhookUrl', webhookUrl);
+    localStorage.setItem('listUrl', listUrl);
+    setWebhookUrl(webhookUrl);
+    setListUrl(listUrl);
+    setIsUserSetup(true);
+  }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setError('');
-    setListUrl('');
-    setWebhookUrl('');
-    setSyncCurl('');
-
-    if (!storedKey) {
-      setError('Please enter a TMDb API key.');
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/create-tenant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ personId, roleType, quality, tmdbKey: storedKey }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        throw new Error(json.error || 'Unknown error');
-      }
-      setListUrl(json.listUrl);
-      setWebhookUrl(json.webhookUrl);
-      setSyncCurl(json.syncCurl);
-    } catch (err) {
-      console.error(err);
-      setError(err.message);
-    }
+  async function addSearch() {
+    // Add additional searches
+    await fetch('/api/add-search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, personId, roleType, sig: userSig }),
+    });
   }
 
   return (
-    <div className={styles.container}>
-      <main className={styles.main}>
-        <h1>Radarr-TMDB Integration MVP</h1>
-        <form onSubmit={handleSubmit} className={styles.form}>
-          <label>
-            TMDb API Key:
-            <input
-              type="text"
-              value={tmdbKey}
-              onChange={e => setTmdbKey(e.target.value.trim())}
-              required
-              aria-describedby="tmdb-desc"
-            />
-            <small id="tmdb-desc">Your personal TMDb API key (stored locally in browser).</small>
-          </label>
-          <label>
-            Role Type:
-            <select value={roleType} onChange={e => setRoleType(e.target.value)}>
-              <option value="actor">Actor</option>
-              <option value="director">Director</option>
-              <option value="producer">Producer</option>
-            </select>
-          </label>
-          <label>
-            TMDb Person ID:
-            <input
-              type="text"
-              value={personId}
-              onChange={e => setPersonId(e.target.value)}
-              required
-              pattern="\d+"
-              aria-describedby="person-desc"
-            />
-            <small id="person-desc">Numeric ID from TMDb (e.g., Tom Hanks = 31)</small>
-          </label>
-          <label>
-            Quality Profile:
-            <input
-              type="text"
-              value={quality}
-              onChange={e => setQuality(e.target.value)}
-              required
-              aria-describedby="quality-desc"
-            />
-            <small id="quality-desc">Name of Radarr quality profile (e.g., 1080p)</small>
-          </label>
-          <button type="submit">Generate URLs</button>
-        </form>
-
-        {error && <p role="alert" className={styles.error}>{error}</p>}
-
-        {listUrl && (
-          <section className={styles.result}>
-            <h2>Configuration URLs</h2>
-            <div>
-              <label htmlFor="listUrl">List URL:</label>
-              <input id="listUrl" readOnly value={listUrl} />
-            </div>
-            <div>
-              <label htmlFor="webhookUrl">Webhook URL:</label>
-              <input id="webhookUrl" readOnly value={webhookUrl} />
-            </div>
-            <div>
-              <label htmlFor="syncCurl">Sync-Now Curl:</label>
-              <textarea id="syncCurl" readOnly rows={3} value={syncCurl} />
-            </div>
-            <p>Paste these into Radarr:</p>
-            <ol>
-              <li>Settings → Connect → + → Webhook (paste Webhook URL)</li>
-              <li>Settings → Lists → + → Custom List (paste List URL)</li>
-              <li>Settings → Connect → + → Custom Script (paste Sync-Now Curl)</li>
-            </ol>
-          </section>
-        )}
-      </main>
+    <div>
+      {!isUserSetup ? (
+        <div>
+          <h2>First-time Setup</h2>
+          {/* TMDb key input and setup */}
+          <button onClick={setupUser}>Setup Radarr Integration</button>
+        </div>
+      ) : (
+        <div>
+          <h2>Add More Actors/Directors</h2>
+          {/* Person search form */}
+          <button onClick={addSearch}>Add to My List</button>
+          
+          <div>
+            <h3>Your Radarr URLs (configured once):</h3>
+            <p>Webhook: {webhookUrl}</p>
+            <p>List: {listUrl}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
