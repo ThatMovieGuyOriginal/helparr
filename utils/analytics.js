@@ -27,7 +27,11 @@ export async function trackEvent(eventType, eventData = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         eventType,
-        eventData,
+        eventData: {
+          ...eventData,
+          timestamp: new Date().toISOString(),
+          sessionId: getSessionId()
+        },
         timestamp: new Date().toISOString(),
         userAgent: navigator.userAgent,
         url: window.location.href
@@ -37,4 +41,13 @@ export async function trackEvent(eventType, eventData = {}) {
     // Silent fail - don't disrupt user experience
     console.debug('Analytics tracking failed:', error);
   }
+}
+
+function getSessionId() {
+  let sessionId = sessionStorage.getItem('helparr_session_id');
+  if (!sessionId) {
+    sessionId = crypto.randomUUID();
+    sessionStorage.setItem('helparr_session_id', sessionId);
+  }
+  return sessionId;
 }
