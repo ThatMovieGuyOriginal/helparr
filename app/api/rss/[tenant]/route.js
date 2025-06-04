@@ -38,7 +38,7 @@ export async function GET(request, { params }) {
       const emptyRss = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
-    <title>Custom Movie List - No Movies Selected</title>
+    <title>Helparr - No Movies Selected</title>
     <description>Select movies in the web interface to populate this feed</description>
     <link>https://helparr.vercel.app</link>
     <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
@@ -72,7 +72,7 @@ export async function GET(request, { params }) {
     const rssContent = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
-    <title>Custom Movie List</title>
+    <title>Helparr Movie List</title>
     <description>Curated movie list from TMDb</description>
     <link>https://helparr.vercel.app</link>
     <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
@@ -99,7 +99,7 @@ ${rssItems}
     const errorRss = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
-    <title>RSS Feed Error</title>
+    <title>Helparr RSS Feed Error</title>
     <description>An error occurred generating the RSS feed</description>
     <link>https://helparr.vercel.app</link>
     <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
