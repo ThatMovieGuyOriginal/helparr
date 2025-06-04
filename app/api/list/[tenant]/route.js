@@ -102,22 +102,16 @@ export async function GET(request, { params }) {
       return Response.json([], { status: 200 });
     }
 
-    // Ensure the movies are in the exact Radarr format with TMDb IDs
+    // Ensure the movies are in the exact Radarr format - try with just IMDB ID first
     const validMovies = movies
       .filter(movie => movie && movie.title && movie.imdb_id)
       .map(movie => {
-        const formatted = { 
+        // Try with minimal format first - just what's required
+        return {
           title: movie.title,
-          imdb_id: movie.imdb_id
+          imdb_id: movie.imdb_id,
+          year: movie.year
         };
-        if (movie.year) formatted.year = movie.year;
-        
-        // CRITICAL: Include TMDb ID if available (this is what Radarr actually needs)
-        if (movie.tmdb_id) {
-          formatted.tmdb_id = movie.tmdb_id;
-        }
-        
-        return formatted;
       });
 
     const processingTime = Date.now() - startTime;
@@ -125,10 +119,13 @@ export async function GET(request, { params }) {
     console.log(`Sample movie: ${JSON.stringify(validMovies[0] || {})}`);
 
     // Return as plain JSON array - exactly what Radarr expects
-    return new Response(JSON.stringify(validMovies), {
+    const jsonResponse = JSON.stringify(validMovies, null, 0); // No formatting
+    
+    return new Response(jsonResponse, {
       status: 200,
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Length': Buffer.byteLength(jsonResponse, 'utf8').toString(),
         'X-Movie-Count': validMovies.length.toString()
       }
     });
