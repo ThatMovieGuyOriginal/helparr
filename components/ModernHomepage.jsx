@@ -457,7 +457,7 @@ export default function ModernHomepage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-y-scroll">
-      <div className="container mx-auto px-4 py-8 max-w-6xl"}>
+      <div className="container mx-auto px-4 py-8 max-w-6xl">
         {/* Header */}
         <header className="text-center mb-8">
           <h1 className="text-4xl md:text-6xl font-bold text-white mb-4 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
