@@ -1,0 +1,164 @@
+{
+  "popularCompanies": [
+    {
+      "id": 7505,
+      "name": "Marvel Entertainment",
+      "popularity": 100,
+      "category": "superhero",
+      "description": "Marvel Cinematic Universe and Marvel productions",
+      "movie_count": 50
+    },
+    {
+      "id": 420,
+      "name": "Marvel Enterprises",
+      "popularity": 95,
+      "category": "superhero", 
+      "description": "Early Marvel movie productions",
+      "movie_count": 25
+    },
+    {
+      "id": 213,
+      "name": "Netflix",
+      "popularity": 98,
+      "category": "streaming",
+      "description": "Netflix original movies and productions",
+      "movie_count": 200
+    },
+    {
+      "id": 2,
+      "name": "Walt Disney Pictures",
+      "popularity": 97,
+      "category": "family",
+      "description": "Disney family movies and animated films",
+      "movie_count": 150
+    },
+    {
+      "id": 3,
+      "name": "Pixar Animation Studios",
+      "popularity": 96,
+      "category": "animation",
+      "description": "Pixar animated movies",
+      "movie_count": 25
+    },
+    {
+      "id": 33,
+      "name": "Universal Pictures",
+      "popularity": 94,
+      "category": "major_studio",
+      "description": "Universal Studios movies",
+      "movie_count": 300
+    },
+    {
+      "id": 25,
+      "name": "20th Century Fox",
+      "popularity": 93,
+      "category": "major_studio", 
+      "description": "20th Century Fox productions",
+      "movie_count": 250
+    },
+    {
+      "id": 174,
+      "name": "Warner Bros. Pictures",
+      "popularity": 92,
+      "category": "major_studio",
+      "description": "Warner Brothers studio productions",
+      "movie_count": 400
+    },
+    {
+      "id": 4,
+      "name": "Paramount Pictures",
+      "popularity": 91,
+      "category": "major_studio",
+      "description": "Paramount studio movies",
+      "movie_count": 350
+    },
+    {
+      "id": 5,
+      "name": "Columbia Pictures",
+      "popularity": 90,
+      "category": "major_studio",
+      "description": "Columbia Pictures productions",
+      "movie_count": 300
+    },
+    {
+      "id": 1632,
+      "name": "Lionsgate",
+      "popularity": 85,
+      "category": "independent",
+      "description": "Lionsgate Entertainment movies",
+      "movie_count": 200
+    },
+    {
+      "id": 41077,
+      "name": "A24",
+      "popularity": 88,
+      "category": "independent",
+      "description": "A24 independent and arthouse films",
+      "movie_count": 80
+    },
+    {
+      "id": 3167,
+      "name": "Blumhouse Productions",
+      "popularity": 87,
+      "category": "horror",
+      "description": "Blumhouse horror and thriller movies",
+      "movie_count": 60
+    },
+    {
+      "id": 1303,
+      "name": "Hallmark Channel",
+      "popularity": 82,
+      "category": "romance",
+      "description": "Hallmark romantic movies and holiday films",
+      "movie_count": 150
+    },
+    {
+      "id": 306,
+      "name": "Twentieth Century Studios",
+      "popularity": 89,
+      "category": "major_studio",
+      "description": "Modern 20th Century Studios (post-Disney acquisition)",
+      "movie_count": 100
+    },
+    {
+      "id": 6194,
+      "name": "Studio Ghibli",
+      "popularity": 95,
+      "category": "animation",
+      "description": "Studio Ghibli animated films",
+      "movie_count": 20
+    },
+    {
+      "id": 429,
+      "name": "DreamWorks Animation",
+      "popularity": 86,
+      "category": "animation",
+      "description": "DreamWorks animated movies",
+      "movie_count": 40
+    },
+    {
+      "id": 79,
+      "name": "Village Roadshow Pictures",
+      "popularity": 75,
+      "category": "production",
+      "description": "Village Roadshow movie productions",
+      "movie_count": 80
+    },
+    {
+      "id": 923,
+      "name": "Legendary Entertainment",
+      "popularity": 80,
+      "category": "blockbuster",
+      "description": "Legendary Pictures blockbuster films",
+      "movie_count": 60
+    },
+    {
+      "id": 1645,
+      "name": "Focus Features",
+      "popularity": 78,
+      "category": "independent",
+      "description": "Focus Features independent films",
+      "movie_count": 100
+    }
+  ]
+}
