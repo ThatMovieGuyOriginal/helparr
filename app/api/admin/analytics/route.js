@@ -1,6 +1,4 @@
 // app/api/admin/analytics/route.js
-
-// Helper function to get Redis client
 async function getRedis() {
   try {
     const { createClient } = await import('redis');
@@ -17,7 +15,6 @@ async function getRedis() {
   }
 }
 
-// Helper to calculate date ranges
 function getDateRange(range) {
   const now = new Date();
   let startDate = new Date();
@@ -34,7 +31,7 @@ function getDateRange(range) {
       break;
     case 'all':
     default:
-      startDate.setFullYear(2024, 0, 1); // Start from Jan 1, 2024
+      startDate.setFullYear(2024, 0, 1);
       break;
   }
   
@@ -51,7 +48,6 @@ export async function GET(request) {
       return Response.json({ error: 'Database unavailable' }, { status: 500 });
     }
 
-    // Get all analytics keys
     const keys = await redis.keys('analytics:*');
     if (keys.length === 0) {
       return Response.json({
@@ -63,25 +59,31 @@ export async function GET(request) {
           totalSearches: 0,
           uniqueQueries: 0,
           totalRssGenerated: 0,
-          activeFeeds: 0
+          activeFeeds: 0,
+          collectionSearches: 0,
+          peopleSearches: 0,
+          collectionsAdded: 0,
+          peopleAdded: 0
         },
         popularSearches: [],
         popularPeople: [],
+        popularCollections: [],
+        searchModes: {},
         eventTypes: {},
         roleTypes: {},
+        collectionTypes: {},
         recentActivity: [],
-        userAgents: []
+        userAgents: [],
+        featureUsage: {}
       });
     }
 
-    // Fetch all analytics data
     const pipeline = redis.multi();
     keys.forEach(key => pipeline.hGetAll(key));
     const results = await pipeline.exec();
 
     const { startDate, endDate } = getDateRange(range);
     
-    // Process analytics data
     const events = results
       .filter(result => result && Object.keys(result).length > 0)
       .map(result => ({
@@ -92,45 +94,93 @@ export async function GET(request) {
       .filter(event => event.timestamp >= startDate && event.timestamp <= endDate)
       .sort((a, b) => b.timestamp - a.timestamp);
 
-    // Calculate overview stats
+    // Calculate enhanced overview stats
     const userIds = new Set();
+    const sessionIds = new Set();
     const pageViews = events.filter(e => e.eventType === 'page_view');
-    const searches = events.filter(e => e.eventType === 'search_people');
+    const peopleSearches = events.filter(e => e.eventType === 'search_people');
+    const collectionSearches = events.filter(e => e.eventType === 'search_collections');
     const rssGenerated = events.filter(e => e.eventType === 'rss_generated');
     const userCreations = events.filter(e => e.eventType === 'user_created');
-    const filmographyLoads = events.filter(e => e.eventType === 'filmography_loaded');
-    const personAdds = events.filter(e => e.eventType === 'add_person_to_list');
+    const peopleAdded = events.filter(e => e.eventType === 'add_person_to_list');
+    const collectionsAdded = events.filter(e => e.eventType === 'add_collection_to_list');
+    const searchModeEvents = events.filter(e => e.eventType === 'search_mode_switch');
 
-    // Extract unique users from various events
+    // Extract unique users and sessions
     events.forEach(event => {
       if (event.eventData.userId) userIds.add(event.eventData.userId);
+      if (event.eventData.sessionId) sessionIds.add(event.eventData.sessionId);
     });
 
-    // Popular searches
-    const searchQueries = {};
-    searches.forEach(event => {
+    // Popular people searches
+    const peopleSearchQueries = {};
+    peopleSearches.forEach(event => {
       const query = event.eventData.query;
       if (query) {
-        searchQueries[query] = (searchQueries[query] || 0) + 1;
+        peopleSearchQueries[query] = (peopleSearchQueries[query] || 0) + 1;
       }
     });
 
-    const popularSearches = Object.entries(searchQueries)
-      .map(([query, count]) => ({ query, count }))
+    const popularPeopleSearches = Object.entries(peopleSearchQueries)
+      .map(([query, count]) => ({ query, count, type: 'people' }))
       .sort((a, b) => b.count - a.count);
+
+    // Popular collection searches
+    const collectionSearchQueries = {};
+    collectionSearches.forEach(event => {
+      const query = event.eventData.query;
+      const searchType = event.eventData.searchType;
+      if (query) {
+        const key = `${query} (${searchType})`;
+        collectionSearchQueries[key] = (collectionSearchQueries[key] || 0) + 1;
+      }
+    });
+
+    const popularCollectionSearches = Object.entries(collectionSearchQueries)
+      .map(([query, count]) => ({ query, count, type: 'collections' }))
+      .sort((a, b) => b.count - a.count);
+
+    // Combine popular searches
+    const popularSearches = [...popularPeopleSearches, ...popularCollectionSearches]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 15);
 
     // Popular people added
-    const peopleAdded = {};
-    personAdds.forEach(event => {
+    const peopleAddedData = {};
+    peopleAdded.forEach(event => {
       const personName = event.eventData.personName;
       if (personName) {
-        peopleAdded[personName] = (peopleAdded[personName] || 0) + 1;
+        peopleAddedData[personName] = (peopleAddedData[personName] || 0) + 1;
       }
     });
 
-    const popularPeople = Object.entries(peopleAdded)
-      .map(([name, count]) => ({ name, count }))
+    const popularPeople = Object.entries(peopleAddedData)
+      .map(([name, count]) => ({ name, count, type: 'person' }))
       .sort((a, b) => b.count - a.count);
+
+    // Popular collections added
+    const collectionsAddedData = {};
+    collectionsAdded.forEach(event => {
+      const collectionName = event.eventData.collectionName;
+      const collectionType = event.eventData.collectionType;
+      if (collectionName) {
+        const key = `${collectionName} (${collectionType})`;
+        collectionsAddedData[key] = (collectionsAddedData[key] || 0) + 1;
+      }
+    });
+
+    const popularCollections = Object.entries(collectionsAddedData)
+      .map(([name, count]) => ({ name, count, type: 'collection' }))
+      .sort((a, b) => b.count - a.count);
+
+    // Search mode preferences
+    const searchModes = {};
+    searchModeEvents.forEach(event => {
+      const mode = event.eventData.mode;
+      if (mode) {
+        searchModes[mode] = (searchModes[mode] || 0) + 1;
+      }
+    });
 
     // Event types distribution
     const eventTypes = {};
@@ -138,14 +188,35 @@ export async function GET(request) {
       eventTypes[event.eventType] = (eventTypes[event.eventType] || 0) + 1;
     });
 
-    // Role types distribution
+    // Role types distribution (for people)
     const roleTypes = {};
+    const filmographyLoads = events.filter(e => e.eventType === 'filmography_loaded');
     filmographyLoads.forEach(event => {
       const roleType = event.eventData.roleType;
       if (roleType) {
         roleTypes[roleType] = (roleTypes[roleType] || 0) + 1;
       }
     });
+
+    // Collection types distribution
+    const collectionTypes = {};
+    collectionSearches.forEach(event => {
+      const searchType = event.eventData.searchType;
+      if (searchType) {
+        collectionTypes[searchType] = (collectionTypes[searchType] || 0) + 1;
+      }
+    });
+
+    // Feature usage analysis
+    const featureUsage = {
+      peopleSearch: peopleSearches.length,
+      collectionSearch: collectionSearches.length,
+      peopleAdded: peopleAdded.length,
+      collectionsAdded: collectionsAdded.length,
+      searchModeSwitch: searchModeEvents.length,
+      filmographyViews: filmographyLoads.length,
+      rssGeneration: rssGenerated.length
+    };
 
     // User agents distribution
     const userAgentCounts = {};
@@ -171,15 +242,24 @@ export async function GET(request) {
         newUsers: userCreations.length,
         totalPageViews: pageViews.length,
         uniquePageViews: new Set(pageViews.map(e => e.url)).size,
-        totalSearches: searches.length,
-        uniqueQueries: Object.keys(searchQueries).length,
+        totalSearches: peopleSearches.length + collectionSearches.length,
+        uniqueQueries: Object.keys(peopleSearchQueries).length + Object.keys(collectionSearchQueries).length,
         totalRssGenerated: rssGenerated.length,
-        activeFeeds: rssGenerated.length // Simplified - could track unique feeds
+        activeFeeds: rssGenerated.length,
+        collectionSearches: collectionSearches.length,
+        peopleSearches: peopleSearches.length,
+        collectionsAdded: collectionsAdded.length,
+        peopleAdded: peopleAdded.length,
+        activeSessions: sessionIds.size
       },
       popularSearches,
       popularPeople,
+      popularCollections,
+      searchModes,
       eventTypes,
       roleTypes,
+      collectionTypes,
+      featureUsage,
       recentActivity,
       userAgents
     };
