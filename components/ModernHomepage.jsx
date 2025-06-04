@@ -1,4 +1,4 @@
-// components/ModernHomepage.jsx
+// components/ModernHomepage.jsx - enhanced
 import { useState, useEffect, useCallback } from 'react';
 
 // HMAC-SHA256 signature generation (client-side)
