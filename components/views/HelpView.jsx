@@ -1,5 +1,15 @@
 // components/views/HelpView.jsx
-export function HelpView() {
+
+function HelpSection({ title, content }) {
+  return (
+    <div className="mb-6">
+      <h3 className="text-xl font-semibold text-white mb-3">{title}</h3>
+      <p className="text-slate-300 leading-relaxed">{content}</p>
+    </div>
+  );
+}
+
+export default function HelpView() {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-8 border border-slate-700">
