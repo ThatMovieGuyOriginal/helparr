@@ -1,7 +1,7 @@
 // app/api/list/[tenant]/route.js
-import { verify } from '@/utils/hmac';
-import { fetchCredits, extractMovieIds } from '@/utils/tmdb';
-import { loadTenant } from '@/lib/kv';
+import { verify } from '../../../../utils/hmac';
+import { fetchCredits, extractMovieIds } from '../../../../utils/tmdb';
+import { loadTenant } from '../../../../lib/kv';
 
 export async function GET(request, { params }) {
   const { tenant: tenantId } = params;
