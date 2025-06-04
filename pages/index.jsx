@@ -1,4 +1,7 @@
-// Updated frontend component
+// pages/index.jsx
+import { useState, useEffect } from 'react';
+import styles from '../styles/Home.module.css';
+
 export default function Home() {
   const [userId, setUserId] = useState('');
   const [isUserSetup, setIsUserSetup] = useState(false);
