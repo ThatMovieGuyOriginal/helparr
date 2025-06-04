@@ -3,6 +3,7 @@ import { verify } from '../../../utils/hmac';
 import { fetchCredits, extractMovieIds } from '../../../utils/tmdb';
 // IMPORT the same shared store
 import tenants from '../../../lib/tenantStore';
+import { loadTenant } from '../../../lib/kv';
 
 /**
  * API Route: Return JSON movie list for Radarr.
@@ -19,8 +20,8 @@ import tenants from '../../../lib/tenantStore';
  */
 export default async function handler(req, res) {
   const { tenant: tenantId, sig } = req.query;
-  const tenant = tenants[tenantId];
 
+  const tenant = await loadTenant(tenantId);
   if (!tenant) {
     return res.status(404).json({ error: 'Tenant not found' });
   }
