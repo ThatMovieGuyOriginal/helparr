@@ -130,7 +130,7 @@ export default function Home() {
       const res = await fetch('/api/add-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, personId, roleType, sig }),
+        body: JSON.stringify({ userId, personId, roleType }),
       });
       
       const json = await res.json();
