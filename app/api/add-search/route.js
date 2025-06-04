@@ -1,4 +1,8 @@
 // app/api/add-search/route.js
+import { verify } from '../../../utils/hmac';
+import { fetchCredits, extractMovieIds } from '../../../utils/tmdb';
+import { loadTenant, saveTenant } from '../../../lib/kv';
+
 export async function POST(request) {
   const { userId, personId, roleType, sig } = await request.json();
   
