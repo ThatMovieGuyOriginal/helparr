@@ -1,5 +1,6 @@
+// utils/tmdb.js
 // Fetch TMDb credits for a person and filter by role: actor, director, or producer.
-const fetch = require('node-fetch');
+
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 
 /**
@@ -8,8 +9,10 @@ const TMDB_BASE = 'https://api.themoviedb.org/3';
  * @param {string} tmdbKey - User-provided TMDb API key.
  * @returns {Promise<object>} TMDb movie_credits JSON.
  */
-async function fetchCredits(personId, tmdbKey) {
+export async function fetchCredits(personId, tmdbKey) {
   const url = `${TMDB_BASE}/person/${personId}/movie_credits?api_key=${tmdbKey}`;
+  
+  // Use the built-in fetch in Node.js 18+ instead of node-fetch
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`TMDb API error: ${res.status} ${res.statusText}`);
@@ -23,20 +26,20 @@ async function fetchCredits(personId, tmdbKey) {
  * @param {string} roleType - One of "actor", "director", "producer".
  * @returns {number[]} Array of unique TMDb movie IDs.
  */
-function extractMovieIds(credits, roleType) {
+export function extractMovieIds(credits, roleType) {
   const set = new Set();
-  if (roleType === 'actor') {
+  
+  if (roleType === 'actor' && credits.cast) {
     credits.cast.forEach(item => set.add(item.id));
-  } else if (roleType === 'director') {
+  } else if (roleType === 'director' && credits.crew) {
     credits.crew.forEach(item => {
       if (item.job === 'Director') set.add(item.id);
     });
-  } else if (roleType === 'producer') {
+  } else if (roleType === 'producer' && credits.crew) {
     credits.crew.forEach(item => {
-      if (item.job.includes('Producer')) set.add(item.id);
+      if (item.job && item.job.includes('Producer')) set.add(item.id);
     });
   }
+  
   return Array.from(set);
 }
-
-module.exports = { fetchCredits, extractMovieIds };
