@@ -1,5 +1,5 @@
 // app/api/list/[tenant]/route.js
-import { verify } from '../../../../utils/hmac';
+import { verify } from '../../../../utils/hmac.js';
 import { loadTenant } from '../../../../lib/kv';
 
 export async function GET(request, { params }) {
