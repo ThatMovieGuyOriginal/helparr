@@ -149,6 +149,57 @@ export default function Home() {
     }
   }
 
+  async function viewDebugInfo() {
+    if (!userId) {
+      setError('No user ID found');
+      return;
+    }
+    
+    try {
+      const res = await fetch(`/api/debug/${userId}?debug=test123`);
+      const data = await res.json();
+      
+      if (res.ok) {
+        alert(JSON.stringify(data, null, 2));
+      } else {
+        setError(data.error || 'Debug request failed');
+      }
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+  
+  // Add this function to refresh cache manually
+  async function refreshCache() {
+    if (!tenantSecret) {
+      setError('Missing authentication data');
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      const signatureData = `refresh-cache:${userId}`;
+      const sig = await generateSignature(signatureData, tenantSecret);
+      
+      const res = await fetch(`/api/refresh-cache?sig=${sig}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      
+      const json = await res.json();
+      if (res.ok) {
+        setSuccess(json.message);
+      } else {
+        setError(json.error);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   function resetSetup() {
     localStorage.clear();
     setIsUserSetup(false);
@@ -244,9 +295,21 @@ export default function Home() {
               <button onClick={resetSetup} className={styles.resetButton}>
                 Reset & Generate New URLs
               </button>
+              {isUserSetup && (
+                <div className={styles.debugTools}>
+                  <h3>Debug Tools</h3>
+                  <button type="button" onClick={viewDebugInfo} disabled={isLoading}>
+                    View Debug Info
+                  </button>
+                  <button type="button" onClick={refreshCache} disabled={isLoading}>
+                    Refresh Movie Cache
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
+        
 
         {error && <p className={styles.error}>{error}</p>}
         {success && <p className={styles.success}>{success}</p>}
