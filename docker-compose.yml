@@ -1,0 +1,181 @@
+# docker-compose.yml
+# Complete self-hosted Helparr setup with Redis backend
+
+version: '3.8'
+
+services:
+  helparr:
+    image: helparr/helparr:latest
+    container_name: helparr
+    restart: unless-stopped
+    ports:
+      - "${HELPARR_PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      # Optional: Add custom configuration
+      - HELPARR_INSTANCE_NAME=${HELPARR_INSTANCE_NAME:-Helparr Self-Hosted}
+      - HELPARR_ADMIN_EMAIL=${HELPARR_ADMIN_EMAIL:-admin@localhost}
+    volumes:
+      - helparr_data:/app/data
+      - /etc/localtime:/etc/localtime:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - helparr_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.helparr.rule=Host(`helparr.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.helparr.tls=true"
+      - "traefik.http.services.helparr.loadbalancer.server.port=3000"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  redis:
+    image: redis:7-alpine
+    container_name: helparr_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - helparr_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    # Security: don't expose Redis port externally
+    # ports:
+    #   - "6379:6379"
+
+  # Optional: Reverse proxy with automatic SSL
+  traefik:
+    image: traefik:v2.10
+    container_name: helparr_traefik
+    restart: unless-stopped
+    command:
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@localhost}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080" # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_acme:/acme.json
+    networks:
+      - helparr_network
+    profiles:
+      - reverse-proxy
+
+volumes:
+  helparr_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HELPARR_DATA_PATH:-./data}
+  redis_data:
+    driver: local
+  traefik_acme:
+    driver: local
+
+networks:
+  helparr_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+---
+# docker-compose.override.yml (for development)
+# This file is automatically loaded in development environments
+
+version: '3.8'
+
+services:
+  helparr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    environment:
+      - NODE_ENV=development
+      - WATCHPACK_POLLING=true
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
+
+  # Development-only services
+  adminer:
+    image: adminer:4-standalone
+    container_name: helparr_adminer
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    networks:
+      - helparr_network
+    profiles:
+      - development
+
+---
+# docker-compose.rss-only.yml
+# Minimal RSS-only deployment for privacy-focused users
+
+version: '3.8'
+
+services:
+  helparr-rss:
+    image: helparr/helparr:rss-only
+    container_name: helparr_rss_only
+    restart: unless-stopped
+    ports:
+      - "${RSS_PORT:-3001}:3000"
+    environment:
+      - NODE_ENV=production
+      - HELPARR_MODE=rss-only
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - rss_data:/app/data
+      - /etc/localtime:/etc/localtime:ro
+    depends_on:
+      - redis
+    networks:
+      - rss_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: rss_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_rss_data:/data
+    networks:
+      - rss_network
+
+volumes:
+  rss_data:
+  redis_rss_data:
+
+networks:
+  rss_network:
+    driver: bridge
