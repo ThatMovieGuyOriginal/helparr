@@ -1,15 +1,12 @@
-// app/api/add-search/route.js
+// app/api/add-search/route.js - Fixed duplicate detection
 import { fetchCredits, extractMovieIds } from '../../../utils/tmdb';
 import { saveTenant, loadTenant } from '../../../lib/kv';
 import { verify } from '../../../utils/hmac';
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 
-// Pre-fetch movie details when adding to avoid list endpoint delays
 async function preloadMovieDetails(movieIds, apiKey) {
   const movieDetails = [];
-  
-  // Process in smaller batches for add-search since this is real-time
   const batchSize = 10;
   
   for (let i = 0; i < movieIds.length; i += batchSize) {
@@ -72,6 +69,8 @@ export async function POST(request) {
     const credits = await fetchCredits(personId, tenant.tmdbKey);
     const newMovieIds = extractMovieIds(credits, roleType);
     
+    console.log(`Found ${newMovieIds.length} movies from TMDb for this person/role`);
+    
     if (newMovieIds.length === 0) {
       console.log('No movies found for this person/role combination');
       const existingCount = tenant.movieIds ? JSON.parse(tenant.movieIds).length : 0;
@@ -82,14 +81,30 @@ export async function POST(request) {
       });
     }
     
-    // Merge with existing movies (avoid duplicates)
+    // Get existing movies and find truly new ones
     const existingMovieIds = tenant.movieIds ? JSON.parse(tenant.movieIds) : [];
-    const allMovieIds = [...new Set([...existingMovieIds, ...newMovieIds])];
-    const actuallyNew = allMovieIds.length - existingMovieIds.length;
+    const existingSet = new Set(existingMovieIds.map(id => String(id))); // Ensure string comparison
+    const trulyNewIds = newMovieIds.filter(id => !existingSet.has(String(id)));
     
-    // Pre-load movie details for the new movies to cache them
-    console.log(`Pre-loading details for ${newMovieIds.length} new movies...`);
-    const newMovieDetails = await preloadMovieDetails(newMovieIds, tenant.tmdbKey);
+    console.log(`Existing movies: ${existingMovieIds.length}`);
+    console.log(`Truly new movies: ${trulyNewIds.length}`);
+    console.log(`Sample new IDs: ${trulyNewIds.slice(0, 5)}`);
+    
+    // Merge all movie IDs
+    const allMovieIds = [...existingMovieIds, ...trulyNewIds];
+    
+    if (trulyNewIds.length === 0) {
+      console.log('All movies from this person are already in the list');
+      return Response.json({ 
+        added: 0,
+        total: existingMovieIds.length,
+        message: 'All movies from this person are already in your list'
+      });
+    }
+    
+    // Pre-load movie details for the truly new movies
+    console.log(`Pre-loading details for ${trulyNewIds.length} truly new movies...`);
+    const newMovieDetails = await preloadMovieDetails(trulyNewIds, tenant.tmdbKey);
     
     // Merge with existing cached movies
     const existingCached = tenant.cachedMovies ? JSON.parse(tenant.cachedMovies) : [];
@@ -104,13 +119,15 @@ export async function POST(request) {
       lastUpdated: new Date().toISOString()
     });
     
-    console.log(`Added ${actuallyNew} new movies, total: ${allMovieIds.length}, cached: ${allCachedMovies.length}`);
+    console.log(`Added ${trulyNewIds.length} truly new movies`);
+    console.log(`Total movies now: ${allMovieIds.length}`);
+    console.log(`Total cached: ${allCachedMovies.length}`);
     
     return Response.json({ 
-      added: actuallyNew,
+      added: trulyNewIds.length,
       total: allMovieIds.length,
       cached: allCachedMovies.length,
-      message: `Successfully added ${actuallyNew} new movies`
+      message: `Successfully added ${trulyNewIds.length} new movies to your list`
     });
     
   } catch (error) {
