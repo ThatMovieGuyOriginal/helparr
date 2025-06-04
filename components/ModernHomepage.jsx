@@ -29,7 +29,7 @@ export default function ModernHomepage() {
   const [rssUrl, setRssUrl] = useState('');
   
   // UI states
-  const [currentView, setCurrentView] = useState('setup'); // setup, search, manage
+  const [currentView, setCurrentView] = useState('setup'); // setup, search, manage, help
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -46,9 +46,20 @@ export default function ModernHomepage() {
   const [roleType, setRoleType] = useState('actor');
   
   // Management states
-  const [actors, setActors] = useState([]);
+  const [people, setPeople] = useState([]); // Changed from actors to people
   const [selectedMovies, setSelectedMovies] = useState([]);
-  const [expandedActors, setExpandedActors] = useState(new Set());
+  const [expandedPeople, setExpandedPeople] = useState(new Set());
+
+  // Auto-dismiss messages after 7 seconds
+  useEffect(() => {
+    if (error || success) {
+      const timer = setTimeout(() => {
+        setError('');
+        setSuccess('');
+      }, 7000);
+      return () => clearTimeout(timer);
+    }
+  }, [error, success]);
 
   // Initialize user on mount
   useEffect(() => {
@@ -63,7 +74,7 @@ export default function ModernHomepage() {
     const savedTmdbKey = localStorage.getItem('tmdbKey');
     const savedSecret = localStorage.getItem('tenantSecret');
     const savedRssUrl = localStorage.getItem('rssUrl');
-    const savedActors = localStorage.getItem('actors');
+    const savedPeople = localStorage.getItem('people');
     const savedMovies = localStorage.getItem('selectedMovies');
     
     if (savedTmdbKey && savedSecret && savedRssUrl) {
@@ -74,11 +85,11 @@ export default function ModernHomepage() {
       setCurrentView('search');
     }
     
-    if (savedActors) {
+    if (savedPeople) {
       try {
-        setActors(JSON.parse(savedActors));
+        setPeople(JSON.parse(savedPeople));
       } catch (e) {
-        console.warn('Failed to parse saved actors');
+        console.warn('Failed to parse saved people');
       }
     }
     
@@ -133,7 +144,7 @@ export default function ModernHomepage() {
     }
   };
 
-  // Search for people
+  // Search for people with debouncing and clearing
   const searchPeople = useCallback(async (query) => {
     if (!query || query.length < 2) {
       setSearchResults([]);
@@ -162,8 +173,13 @@ export default function ModernHomepage() {
     }
   }, [userId, tenantSecret]);
 
-  // Debounced search
+  // Handle search input changes with clearing
   useEffect(() => {
+    if (searchQuery.trim() === '') {
+      setSearchResults([]);
+      return;
+    }
+    
     const timer = setTimeout(() => {
       if (searchQuery && currentView === 'search') {
         searchPeople(searchQuery);
@@ -203,37 +219,53 @@ export default function ModernHomepage() {
     }
   };
 
-  // Add actor to list
-  const addActorToList = (selectedMoviesList) => {
+  // Add person to list (improved deduplication)
+  const addPersonToList = (selectedMoviesList) => {
     if (!selectedPerson || selectedMoviesList.length === 0) return;
     
-    const newActor = {
-      id: selectedPerson.id,
-      name: selectedPerson.name,
-      profile_path: selectedPerson.profile_path,
-      role: roleType,
-      movies: selectedMoviesList,
-      addedAt: new Date().toISOString()
-    };
+    // Find existing person or create new
+    const existingPersonIndex = people.findIndex(p => p.id === selectedPerson.id);
+    let updatedPeople;
     
-    // Check if actor already exists
-    const existingIndex = actors.findIndex(a => a.id === selectedPerson.id && a.role === roleType);
-    let updatedActors;
-    
-    if (existingIndex >= 0) {
-      // Update existing actor
-      updatedActors = [...actors];
-      updatedActors[existingIndex] = newActor;
+    if (existingPersonIndex >= 0) {
+      // Person exists, add/update role
+      updatedPeople = [...people];
+      const existingPerson = updatedPeople[existingPersonIndex];
+      
+      // Add or update the role
+      const roleIndex = existingPerson.roles.findIndex(r => r.type === roleType);
+      const newRole = {
+        type: roleType,
+        movies: selectedMoviesList,
+        addedAt: new Date().toISOString()
+      };
+      
+      if (roleIndex >= 0) {
+        existingPerson.roles[roleIndex] = newRole;
+      } else {
+        existingPerson.roles.push(newRole);
+      }
     } else {
-      // Add new actor
-      updatedActors = [...actors, newActor];
+      // New person
+      const newPerson = {
+        id: selectedPerson.id,
+        name: selectedPerson.name,
+        profile_path: selectedPerson.profile_path,
+        roles: [{
+          type: roleType,
+          movies: selectedMoviesList,
+          addedAt: new Date().toISOString()
+        }],
+        addedAt: new Date().toISOString()
+      };
+      updatedPeople = [...people, newPerson];
     }
     
-    setActors(updatedActors);
-    localStorage.setItem('actors', JSON.stringify(updatedActors));
+    setPeople(updatedPeople);
+    localStorage.setItem('people', JSON.stringify(updatedPeople));
     
     // Update selected movies
-    updateSelectedMovies(updatedActors);
+    updateSelectedMovies(updatedPeople);
     
     setSuccess(`Added ${selectedMoviesList.length} movies from ${selectedPerson.name} (${roleType})`);
     setSelectedPerson(null);
@@ -241,17 +273,19 @@ export default function ModernHomepage() {
     setCurrentView('manage');
   };
 
-  // Update selected movies based on actors
-  const updateSelectedMovies = (actorsList = actors) => {
+  // Update selected movies based on people and roles
+  const updateSelectedMovies = (peopleList = people) => {
     const allMovies = [];
     const movieIds = new Set();
     
-    actorsList.forEach(actor => {
-      actor.movies.forEach(movie => {
-        if (!movieIds.has(movie.id)) {
-          movieIds.add(movie.id);
-          allMovies.push(movie);
-        }
+    peopleList.forEach(person => {
+      person.roles.forEach(role => {
+        role.movies.forEach(movie => {
+          if (movie.selected !== false && !movieIds.has(movie.id)) {
+            movieIds.add(movie.id);
+            allMovies.push(movie);
+          }
+        });
       });
     });
     
@@ -259,54 +293,85 @@ export default function ModernHomepage() {
     localStorage.setItem('selectedMovies', JSON.stringify(allMovies));
   };
 
-  // Remove actor
-  const removeActor = (actorId, role) => {
-    const updatedActors = actors.filter(a => !(a.id === actorId && a.role === role));
-    setActors(updatedActors);
-    localStorage.setItem('actors', JSON.stringify(updatedActors));
-    updateSelectedMovies(updatedActors);
+  // Remove person entirely
+  const removePerson = (personId) => {
+    const updatedPeople = people.filter(p => p.id !== personId);
+    setPeople(updatedPeople);
+    localStorage.setItem('people', JSON.stringify(updatedPeople));
+    updateSelectedMovies(updatedPeople);
   };
 
-  // Toggle movie selection for an actor
-  const toggleMovieForActor = (actorId, role, movieId) => {
-    const updatedActors = actors.map(actor => {
-      if (actor.id === actorId && actor.role === role) {
-        const updatedMovies = actor.movies.map(movie => 
-          movie.id === movieId ? { ...movie, selected: !movie.selected } : movie
-        );
-        return { ...actor, movies: updatedMovies };
+  // Remove specific role from person
+  const removeRole = (personId, roleType) => {
+    const updatedPeople = people.map(person => {
+      if (person.id === personId) {
+        return {
+          ...person,
+          roles: person.roles.filter(role => role.type !== roleType)
+        };
       }
-      return actor;
+      return person;
+    }).filter(person => person.roles.length > 0); // Remove person if no roles left
+    
+    setPeople(updatedPeople);
+    localStorage.setItem('people', JSON.stringify(updatedPeople));
+    updateSelectedMovies(updatedPeople);
+  };
+
+  // Toggle movie selection for a person's role
+  const toggleMovieForPerson = (personId, roleType, movieId) => {
+    const updatedPeople = people.map(person => {
+      if (person.id === personId) {
+        return {
+          ...person,
+          roles: person.roles.map(role => {
+            if (role.type === roleType) {
+              return {
+                ...role,
+                movies: role.movies.map(movie => 
+                  movie.id === movieId ? { ...movie, selected: !movie.selected } : movie
+                )
+              };
+            }
+            return role;
+          })
+        };
+      }
+      return person;
     });
     
-    setActors(updatedActors);
-    localStorage.setItem('actors', JSON.stringify(updatedActors));
-    updateSelectedMovies(updatedActors);
+    setPeople(updatedPeople);
+    localStorage.setItem('people', JSON.stringify(updatedPeople));
+    updateSelectedMovies(updatedPeople);
   };
 
-  // Select all movies for an actor
-  const selectAllForActor = (actorId, role, selectAll = true) => {
-    const updatedActors = actors.map(actor => {
-      if (actor.id === actorId && actor.role === role) {
-        const updatedMovies = actor.movies.map(movie => ({ ...movie, selected: selectAll }));
-        return { ...actor, movies: updatedMovies };
+  // Select all movies for a person's role
+  const selectAllForRole = (personId, roleType, selectAll = true) => {
+    const updatedPeople = people.map(person => {
+      if (person.id === personId) {
+        return {
+          ...person,
+          roles: person.roles.map(role => {
+            if (role.type === roleType) {
+              return {
+                ...role,
+                movies: role.movies.map(movie => ({ ...movie, selected: selectAll }))
+              };
+            }
+            return role;
+          })
+        };
       }
-      return actor;
+      return person;
     });
     
-    setActors(updatedActors);
-    localStorage.setItem('actors', JSON.stringify(updatedActors));
-    updateSelectedMovies(updatedActors);
+    setPeople(updatedPeople);
+    localStorage.setItem('people', JSON.stringify(updatedPeople));
+    updateSelectedMovies(updatedPeople);
   };
 
-  // Generate RSS URL with current selection
+  // Generate RSS URL with server-side storage
   const generateRssUrl = async () => {
-    const actuallySelectedMovies = selectedMovies.filter(movie => 
-      actors.some(actor => 
-        actor.movies.some(m => m.id === movie.id && m.selected !== false)
-      )
-    );
-
     try {
       const sig = await generateSignature(`sync-list:${userId}`, tenantSecret);
       const res = await fetch(`/api/sync-list?sig=${sig}`, {
@@ -314,8 +379,8 @@ export default function ModernHomepage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           userId, 
-          selectedMovies: actuallySelectedMovies,
-          actors: actors.filter(a => a.movies.some(m => m.selected !== false))
+          selectedMovies,
+          people
         }),
       });
       
@@ -332,23 +397,35 @@ export default function ModernHomepage() {
     }
   };
 
+  // Reset with confirmation
+  const confirmReset = () => {
+    if (window.confirm('⚠️ WARNING: This will delete ALL your data including actors, directors, and movie selections. This cannot be undone. Are you absolutely sure?')) {
+      if (window.confirm('Last chance! This will permanently delete everything. Continue?')) {
+        resetSetup();
+      }
+    }
+  };
+
   // Reset everything
   const resetSetup = () => {
     localStorage.clear();
     setIsSetup(false);
     setCurrentView('setup');
-    setActors([]);
+    setPeople([]);
     setSelectedMovies([]);
     setTmdbKey('');
     setTenantSecret('');
     setRssUrl('');
     setSelectedPerson(null);
     setFilmography([]);
+    setSearchQuery('');
+    setSearchResults([]);
     
     // Generate new user ID
     const newId = crypto.randomUUID();
     localStorage.setItem('userId', newId);
     setUserId(newId);
+    setSuccess('All data has been reset. You can start fresh!');
   };
 
   // Clear messages
@@ -377,7 +454,8 @@ export default function ModernHomepage() {
             <div className="bg-slate-800/50 backdrop-blur-sm rounded-full p-1 border border-slate-700">
               {[
                 { key: 'search', label: 'Search', icon: '🔍' },
-                { key: 'manage', label: 'Manage List', icon: '📋' }
+                { key: 'manage', label: 'Manage List', icon: '📋' },
+                { key: 'help', label: 'Help', icon: '❓' }
               ].map(tab => (
                 <button
                   key={tab.key}
@@ -400,7 +478,7 @@ export default function ModernHomepage() {
         {(error || success) && (
           <div className="mb-6 max-w-2xl mx-auto">
             {error && (
-              <div className="bg-red-500/20 border border-red-500 rounded-lg p-4 mb-4">
+              <div className="bg-red-500/20 border border-red-500 rounded-lg p-4 mb-4 animate-fade-in">
                 <div className="flex items-center justify-between">
                   <p className="text-red-200">{error}</p>
                   <button onClick={clearMessages} className="text-red-200 hover:text-white">✕</button>
@@ -408,7 +486,7 @@ export default function ModernHomepage() {
               </div>
             )}
             {success && (
-              <div className="bg-green-500/20 border border-green-500 rounded-lg p-4">
+              <div className="bg-green-500/20 border border-green-500 rounded-lg p-4 animate-fade-in">
                 <div className="flex items-center justify-between">
                   <p className="text-green-200">{success}</p>
                   <button onClick={clearMessages} className="text-green-200 hover:text-white">✕</button>
@@ -470,7 +548,7 @@ export default function ModernHomepage() {
                   type="text"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Search for actors, directors, producers..."
+                  placeholder="Search for actors, directors, producers, sound engineers, writers..."
                   className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:ring-2 focus:ring-purple-500 focus:border-transparent pr-12"
                 />
                 {searchLoading && (
@@ -500,13 +578,13 @@ export default function ModernHomepage() {
                           <h3 className="font-medium text-white">{person.name}</h3>
                           <p className="text-sm text-slate-400">{person.known_for_department}</p>
                           {person.known_for && (
-                            <p className="text-xs text-slate-500 mt-1">Known for: {person.known_for}</p>
+                            <p className="text-xs text-slate-500 mt-1 line-clamp-2">Known for: {person.known_for}</p>
                           )}
                         </div>
                       </div>
 
-                      <div className="mt-4 flex space-x-2">
-                        {['actor', 'director', 'producer'].map(role => (
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {['actor', 'director', 'producer', 'sound', 'writer'].map(role => (
                           <button
                             key={role}
                             onClick={() => getFilmography(person, role)}
@@ -549,8 +627,8 @@ export default function ModernHomepage() {
                 ) : filmography.length > 0 ? (
                   <FilmographySelector
                     movies={filmography}
-                    onSave={addActorToList}
-                    actorName={selectedPerson.name}
+                    onSave={addPersonToList}
+                    personName={selectedPerson.name}
                     role={roleType}
                   />
                 ) : (
@@ -567,7 +645,7 @@ export default function ModernHomepage() {
             <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-bold text-white">
-                  Your Movie List ({selectedMovies.length} movies)
+                  Your Movie List ({selectedMovies.length} movies, {people.length} people)
                 </h2>
                 <div className="flex space-x-3">
                   <button
@@ -577,10 +655,10 @@ export default function ModernHomepage() {
                     Update RSS Feed
                   </button>
                   <button
-                    onClick={resetSetup}
+                    onClick={confirmReset}
                     className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors duration-200"
                   >
-                    Reset
+                    ⚠️ Reset All
                   </button>
                 </div>
               </div>
@@ -604,29 +682,32 @@ export default function ModernHomepage() {
                       Copy
                     </button>
                   </div>
+                  <p className="text-xs text-slate-400 mt-2">
+                    🎯 This URL stays the same regardless of how many movies you add. Safe to add to Radarr immediately!
+                  </p>
                 </div>
               )}
 
-              {/* Actors List */}
-              {actors.length > 0 ? (
+              {/* People List */}
+              {people.length > 0 ? (
                 <div className="space-y-4">
-                  {actors.map(actor => (
-                    <ActorManager
-                      key={`${actor.id}-${actor.role}`}
-                      actor={actor}
-                      onRemove={() => removeActor(actor.id, actor.role)}
-                      onToggleMovie={(movieId) => toggleMovieForActor(actor.id, actor.role, movieId)}
-                      onSelectAll={(selectAll) => selectAllForActor(actor.id, actor.role, selectAll)}
-                      isExpanded={expandedActors.has(`${actor.id}-${actor.role}`)}
+                  {people.map(person => (
+                    <PersonManager
+                      key={person.id}
+                      person={person}
+                      onRemovePerson={() => removePerson(person.id)}
+                      onRemoveRole={(roleType) => removeRole(person.id, roleType)}
+                      onToggleMovie={(roleType, movieId) => toggleMovieForPerson(person.id, roleType, movieId)}
+                      onSelectAllForRole={(roleType, selectAll) => selectAllForRole(person.id, roleType, selectAll)}
+                      isExpanded={expandedPeople.has(person.id)}
                       onToggleExpanded={() => {
-                        const key = `${actor.id}-${actor.role}`;
-                        const newExpanded = new Set(expandedActors);
-                        if (newExpanded.has(key)) {
-                          newExpanded.delete(key);
+                        const newExpanded = new Set(expandedPeople);
+                        if (newExpanded.has(person.id)) {
+                          newExpanded.delete(person.id);
                         } else {
-                          newExpanded.add(key);
+                          newExpanded.add(person.id);
                         }
-                        setExpandedActors(newExpanded);
+                        setExpandedPeople(newExpanded);
                       }}
                     />
                   ))}
@@ -645,13 +726,75 @@ export default function ModernHomepage() {
             </div>
           </div>
         )}
+
+        {/* Help View */}
+        {currentView === 'help' && (
+          <div className="max-w-4xl mx-auto">
+            <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-8 border border-slate-700">
+              <h2 className="text-3xl font-bold text-white mb-8 text-center">How to Use Helparr</h2>
+              
+              <div className="space-y-8">
+                <HelpSection 
+                  title="1. 🔍 Search for People"
+                  content="Use the Search tab to find actors, directors, producers, sound engineers, and writers. Type their name and wait for results to appear. Click on any role button (Actor, Director, etc.) to see their filmography in that role."
+                />
+                
+                <HelpSection 
+                  title="2. 🎬 Select Movies"
+                  content="When viewing someone's filmography, you'll see all their movies with details. Each movie has a checkbox - check the ones you want to add to your list. Use 'Select All' or 'Select None' for quick selection. You can see movie posters, ratings, and descriptions to help you decide."
+                />
+                
+                <HelpSection 
+                  title="3. 📋 Manage Your List"
+                  content="In the Manage List tab, you'll see all the people you've added. Each person can have multiple roles (Actor, Director, etc.) shown as tabs. You can expand each person to see their movies and toggle individual movies on/off. The RSS feed only includes movies that are checked."
+                />
+                
+                <HelpSection 
+                  title="4. 📡 RSS Feed Setup"
+                  content="Your RSS feed URL is generated once and never changes - even when you add more movies! You can safely add this URL to Radarr immediately. In Radarr, go to Settings → Lists, add a new 'RSS List', and paste your URL. The feed includes a placeholder item when empty, so Radarr won't error."
+                />
+                
+                <HelpSection 
+                  title="5. 🔄 Updating Your List"
+                  content="After making changes to your movie selections, click 'Update RSS Feed' to sync your changes. Radarr will automatically pick up new movies on its next sync cycle (configurable in Radarr's list settings)."
+                />
+                
+                <HelpSection 
+                  title="6. ⚠️ Reset Function"
+                  content="The 'Reset All' button will DELETE EVERYTHING - all your people, movies, and settings. It requires two confirmations to prevent accidents. Only use this if you want to start completely over."
+                />
+                
+                <div className="bg-purple-600/20 border border-purple-500 rounded-lg p-6">
+                  <h3 className="text-lg font-semibold text-purple-200 mb-3">💡 Pro Tips</h3>
+                  <ul className="text-purple-100 space-y-2 text-sm">
+                    <li>• Your data is stored locally in your browser for privacy</li>
+                    <li>• You can add the same person in multiple roles (e.g., someone who acts and directs)</li>
+                    <li>• The search includes Sound Engineers and Writers for complete filmographies</li>
+                    <li>• Messages auto-disappear after 7 seconds to keep the interface clean</li>
+                    <li>• Your RSS URL works immediately - no need to wait until you add movies</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-// Filmography Selector Component
-function FilmographySelector({ movies, onSave, actorName, role }) {
+// Help Section Component
+function HelpSection({ title, content }) {
+  return (
+    <div className="border-l-4 border-purple-500 pl-6">
+      <h3 className="text-xl font-semibold text-white mb-3">{title}</h3>
+      <p className="text-slate-300 leading-relaxed">{content}</p>
+    </div>
+  );
+}
+
+// Enhanced Filmography Selector Component
+function FilmographySelector({ movies, onSave, personName, role }) {
   const [selectedMovies, setSelectedMovies] = useState(
     movies.map(movie => ({ ...movie, selected: true }))
   );
@@ -701,11 +844,11 @@ function FilmographySelector({ movies, onSave, actorName, role }) {
         </div>
       </div>
 
-      <div className="max-h-96 overflow-y-auto space-y-2 mb-6 scrollbar-thin">
+      <div className="max-h-96 overflow-y-auto space-y-3 mb-6 scrollbar-thin">
         {selectedMovies.map(movie => (
           <div
             key={movie.id}
-            className={`flex items-center space-x-4 p-3 rounded-lg border cursor-pointer transition-colors duration-200 ${
+            className={`flex items-start space-x-4 p-4 rounded-lg border cursor-pointer transition-colors duration-200 ${
               movie.selected
                 ? 'bg-purple-600/20 border-purple-500'
                 : 'bg-slate-700/50 border-slate-600'
@@ -716,35 +859,41 @@ function FilmographySelector({ movies, onSave, actorName, role }) {
               type="checkbox"
               checked={movie.selected}
               onChange={() => toggleMovie(movie.id)}
-              className="w-4 h-4 text-purple-600 bg-slate-700 border-slate-600 rounded focus:ring-purple-500"
+              className="w-4 h-4 mt-1 text-purple-600 bg-slate-700 border-slate-600 rounded focus:ring-purple-500"
             />
             
             {movie.poster_path ? (
               <img
                 src={`https://image.tmdb.org/t/p/w92${movie.poster_path}`}
                 alt={movie.title}
-                className="w-12 h-18 object-cover rounded"
+                className="w-12 h-18 object-cover rounded flex-shrink-0"
               />
             ) : (
-              <div className="w-12 h-18 bg-slate-600 rounded flex items-center justify-center text-xs text-slate-400">
+              <div className="w-12 h-18 bg-slate-600 rounded flex items-center justify-center text-xs text-slate-400 flex-shrink-0">
                 No Image
               </div>
             )}
             
-            <div className="flex-1">
-              <h4 className="font-medium text-white">
+            <div className="flex-1 min-w-0">
+              <h4 className="font-medium text-white mb-1">
                 {movie.title} ({movie.year || 'Unknown'})
               </h4>
-              {movie.vote_average > 0 && (
-                <p className="text-sm text-slate-400">
-                  ⭐ {movie.vote_average.toFixed(1)}/10
+              {movie.overview && (
+                <p className="text-sm text-slate-400 mb-2 line-clamp-2">
+                  {movie.overview}
                 </p>
               )}
-              {movie.genres.length > 0 && (
-                <p className="text-xs text-slate-500">
-                  {movie.genres.join(', ')}
-                </p>
-              )}
+              <div className="flex items-center space-x-4 text-xs text-slate-500">
+                {movie.vote_average > 0 && (
+                  <span>⭐ {movie.vote_average.toFixed(1)}/10</span>
+                )}
+                {movie.genres.length > 0 && (
+                  <span>{movie.genres.join(', ')}</span>
+                )}
+                {movie.runtime && (
+                  <span>{movie.runtime} min</span>
+                )}
+              </div>
             </div>
           </div>
         ))}
@@ -763,20 +912,23 @@ function FilmographySelector({ movies, onSave, actorName, role }) {
   );
 }
 
-// Actor Manager Component
-function ActorManager({ actor, onRemove, onToggleMovie, onSelectAll, isExpanded, onToggleExpanded }) {
-  const selectedCount = actor.movies.filter(m => m.selected !== false).length;
-  const totalCount = actor.movies.length;
+// Enhanced Person Manager Component
+function PersonManager({ person, onRemovePerson, onRemoveRole, onToggleMovie, onSelectAllForRole, isExpanded, onToggleExpanded }) {
+  const [activeRole, setActiveRole] = useState(person.roles[0]?.type || 'actor');
+  
+  const currentRole = person.roles.find(r => r.type === activeRole) || person.roles[0];
+  const selectedCount = currentRole ? currentRole.movies.filter(m => m.selected !== false).length : 0;
+  const totalCount = currentRole ? currentRole.movies.length : 0;
 
   return (
     <div className="bg-slate-700/50 rounded-lg border border-slate-600">
       <div className="p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            {actor.profile_path ? (
+            {person.profile_path ? (
               <img
-                src={`https://image.tmdb.org/t/p/w92${actor.profile_path}`}
-                alt={actor.name}
+                src={`https://image.tmdb.org/t/p/w92${person.profile_path}`}
+                alt={person.name}
                 className="w-12 h-12 rounded-full object-cover"
               />
             ) : (
@@ -786,11 +938,15 @@ function ActorManager({ actor, onRemove, onToggleMovie, onSelectAll, isExpanded,
             )}
             
             <div>
-              <h3 className="font-medium text-white">{actor.name}</h3>
-              <p className="text-sm text-slate-400 capitalize">{actor.role}</p>
-              <p className="text-xs text-slate-500">
-                {selectedCount} of {totalCount} movies selected
+              <h3 className="font-medium text-white">{person.name}</h3>
+              <p className="text-sm text-slate-400">
+                {person.roles.length} role{person.roles.length !== 1 ? 's' : ''}
               </p>
+              {currentRole && (
+                <p className="text-xs text-slate-500">
+                  {selectedCount} of {totalCount} {currentRole.type} movies selected
+                </p>
+              )}
             </div>
           </div>
 
@@ -802,7 +958,7 @@ function ActorManager({ actor, onRemove, onToggleMovie, onSelectAll, isExpanded,
               {isExpanded ? '▲' : '▼'} Movies
             </button>
             <button
-              onClick={onRemove}
+              onClick={onRemovePerson}
               className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors duration-200"
             >
               Remove
@@ -810,41 +966,70 @@ function ActorManager({ actor, onRemove, onToggleMovie, onSelectAll, isExpanded,
           </div>
         </div>
 
-        {isExpanded && (
+        {/* Role Tabs */}
+        {person.roles.length > 1 && (
+          <div className="mt-4 flex space-x-2">
+            {person.roles.map(role => (
+              <button
+                key={role.type}
+                onClick={() => setActiveRole(role.type)}
+                className={`px-3 py-1 text-sm rounded-full capitalize transition-colors duration-200 ${
+                  activeRole === role.type
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-slate-600 hover:bg-slate-500 text-slate-300'
+                }`}
+              >
+                {role.type} ({role.movies.length})
+              </button>
+            ))}
+          </div>
+        )}
+
+        {isExpanded && currentRole && (
           <div className="mt-4 pt-4 border-t border-slate-600">
             <div className="flex justify-between items-center mb-3">
-              <p className="text-sm text-slate-300">Select movies to include in RSS feed:</p>
+              <p className="text-sm text-slate-300">
+                Select {currentRole.type} movies to include in RSS feed:
+              </p>
               <div className="flex space-x-2">
                 <button
-                  onClick={() => onSelectAll(true)}
+                  onClick={() => onSelectAllForRole(currentRole.type, true)}
                   className="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white text-xs rounded"
                 >
                   All
                 </button>
                 <button
-                  onClick={() => onSelectAll(false)}
+                  onClick={() => onSelectAllForRole(currentRole.type, false)}
                   className="px-2 py-1 bg-slate-600 hover:bg-slate-700 text-white text-xs rounded"
                 >
                   None
                 </button>
+                {person.roles.length > 1 && (
+                  <button
+                    onClick={() => onRemoveRole(currentRole.type)}
+                    className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded"
+                  >
+                    Remove {currentRole.type}
+                  </button>
+                )}
               </div>
             </div>
 
             <div className="max-h-60 overflow-y-auto space-y-2 scrollbar-thin">
-              {actor.movies.map(movie => (
+              {currentRole.movies.map(movie => (
                 <div
                   key={movie.id}
-                  className={`flex items-center space-x-3 p-2 rounded border cursor-pointer transition-colors duration-200 ${
+                  className={`flex items-center space-x-3 p-3 rounded border cursor-pointer transition-colors duration-200 ${
                     movie.selected !== false
                       ? 'bg-purple-600/20 border-purple-500'
                       : 'bg-slate-800/50 border-slate-600'
                   }`}
-                  onClick={() => onToggleMovie(movie.id)}
+                  onClick={() => onToggleMovie(currentRole.type, movie.id)}
                 >
                   <input
                     type="checkbox"
                     checked={movie.selected !== false}
-                    onChange={() => onToggleMovie(movie.id)}
+                    onChange={() => onToggleMovie(currentRole.type, movie.id)}
                     className="w-3 h-3 text-purple-600 bg-slate-700 border-slate-600 rounded focus:ring-purple-500"
                   />
                   
@@ -852,11 +1037,14 @@ function ActorManager({ actor, onRemove, onToggleMovie, onSelectAll, isExpanded,
                     <p className="text-sm font-medium text-white">
                       {movie.title} ({movie.year || 'Unknown'})
                     </p>
-                    {movie.vote_average > 0 && (
-                      <p className="text-xs text-slate-400">
-                        ⭐ {movie.vote_average.toFixed(1)}/10
-                      </p>
-                    )}
+                    <div className="flex items-center space-x-3 text-xs text-slate-400 mt-1">
+                      {movie.vote_average > 0 && (
+                        <span>⭐ {movie.vote_average.toFixed(1)}/10</span>
+                      )}
+                      {movie.genres.length > 0 && (
+                        <span>{movie.genres.slice(0, 2).join(', ')}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
