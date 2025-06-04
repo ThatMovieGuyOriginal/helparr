@@ -109,25 +109,26 @@ export default function Home() {
     setError('');
     setSuccess('');
     setIsLoading(true);
-
+  
     if (!personId) {
       setError('Please enter a person ID.');
       setIsLoading(false);
       return;
     }
-
+  
     if (!tenantSecret) {
       setError('Missing authentication data. Please reset and setup again.');
       setIsLoading(false);
       return;
     }
-
+  
     try {
       // Generate signature for the add-search request
       const signatureData = `add-search:${userId}`;
       const sig = await generateSignature(signatureData, tenantSecret);
-
-      const res = await fetch('/api/add-search', {
+  
+      // Include signature as query parameter like other endpoints
+      const res = await fetch(`/api/add-search?sig=${sig}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, personId, roleType }),
