@@ -16,7 +16,7 @@ export async function fetchCredits(personId, tmdbKey) {
     const res = await fetch(url, {
       headers: {
         'Accept': 'application/json',
-        'User-Agent': 'MovieCurator/1.0'
+        'User-Agent': 'Helparr/2.0'
       }
     });
     
