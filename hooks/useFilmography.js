@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { generateSignature, trackEvent } from '../utils/analytics';
 
-export function useFilmography(userId, tenantSecret) {
+export function useFilmography(userId = '', tenantSecret = '') {
   const [selectedPerson, setSelectedPerson] = useState(null);
   const [filmography, setFilmography] = useState([]);
   const [filmographyLoading, setFilmographyLoading] = useState(false);
@@ -11,6 +11,10 @@ export function useFilmography(userId, tenantSecret) {
 
   // Get filmography
   const getFilmography = async (person, role) => {
+    if (!userId || !tenantSecret) {
+      throw new Error('User not properly initialized');
+    }
+
     setSelectedPerson(person);
     setRoleType(role);
     setFilmographyLoading(true);
