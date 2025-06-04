@@ -16,32 +16,55 @@ export default function PersonManager({
   const selectedCount = currentRole ? currentRole.movies.filter(m => m.selected !== false).length : 0;
   const totalCount = currentRole ? currentRole.movies.length : 0;
 
+  const getItemIcon = () => {
+    if (person.type === 'collection') {
+      switch (person.collectionType) {
+        case 'collection': return '🎬';
+        case 'company': return '🏢';
+        case 'keyword': return '🏷️';
+        case 'genre': return '🎭';
+        default: return '📁';
+      }
+    }
+    return '👤';
+  };
+
+  const getItemTypeLabel = () => {
+    if (person.type === 'collection') {
+      return person.collectionType?.charAt(0).toUpperCase() + person.collectionType?.slice(1) || 'Collection';
+    }
+    return 'Person';
+  };
+
   return (
     <div className="bg-slate-700/50 rounded-lg border border-slate-600">
       <div className="p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            {person.profile_path ? (
+            {person.profile_path || person.poster_path ? (
               <img
-                src={`https://image.tmdb.org/t/p/w92${person.profile_path}`}
+                src={`https://image.tmdb.org/t/p/w92${person.profile_path || person.poster_path}`}
                 alt={person.name}
                 className="w-12 h-12 rounded-full object-cover"
               />
             ) : (
-              <div className="w-12 h-12 bg-slate-600 rounded-full flex items-center justify-center">
-                👤
+              <div className="w-12 h-12 bg-slate-600 rounded-full flex items-center justify-center text-2xl">
+                {getItemIcon()}
               </div>
             )}
             
             <div>
               <h3 className="font-medium text-white">{person.name}</h3>
               <p className="text-sm text-slate-400">
-                {person.roles.length} role{person.roles.length !== 1 ? 's' : ''}
+                {getItemTypeLabel()} • {person.roles.length} {person.roles.length === 1 ? 'entry' : 'entries'}
               </p>
               {currentRole && (
                 <p className="text-xs text-slate-500">
-                  {selectedCount} of {totalCount} {currentRole.type} movies selected
+                  {selectedCount} of {totalCount} movies selected
                 </p>
+              )}
+              {person.overview && (
+                <p className="text-xs text-slate-500 mt-1 line-clamp-1">{person.overview}</p>
               )}
             </div>
           </div>
@@ -62,8 +85,8 @@ export default function PersonManager({
           </div>
         </div>
 
-        {/* Role Tabs */}
-        {person.roles.length > 1 && (
+        {/* Role Tabs - Only show for people, not collections */}
+        {person.type !== 'collection' && person.roles.length > 1 && (
           <div className="mt-4 flex space-x-2">
             {person.roles.map(role => (
               <button
@@ -85,7 +108,7 @@ export default function PersonManager({
           <div className="mt-4 pt-4 border-t border-slate-600">
             <div className="flex justify-between items-center mb-3">
               <p className="text-sm text-slate-300">
-                Select {currentRole.type} movies to include in RSS feed:
+                Select {person.type === 'collection' ? 'collection' : currentRole.type} movies to include in RSS feed:
               </p>
               <div className="flex space-x-2">
                 <button
@@ -100,7 +123,7 @@ export default function PersonManager({
                 >
                   None
                 </button>
-                {person.roles.length > 1 && (
+                {person.type !== 'collection' && person.roles.length > 1 && (
                   <button
                     onClick={() => onRemoveRole(currentRole.type)}
                     className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded"
@@ -137,8 +160,8 @@ export default function PersonManager({
                       {movie.vote_average > 0 && (
                         <span>⭐ {movie.vote_average.toFixed(1)}/10</span>
                       )}
-                      {movie.genres && movie.genres.length > 0 && (
-                        <span>{movie.genres.slice(0, 2).join(', ')}</span>
+                      {movie.release_date && (
+                        <span>📅 {new Date(movie.release_date).toLocaleDateString()}</span>
                       )}
                     </div>
                   </div>
