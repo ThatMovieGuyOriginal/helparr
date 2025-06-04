@@ -1,9 +1,9 @@
 {
-  "name": "moviecurator",
+  "name": "helparr",
   "version": "2.0.0",
   "private": true,
   "description": "Create custom movie lists for Radarr by actor and director",
-  "keywords": ["radarr", "plex", "jellyfin", "emby", "movies", "tmdb"],
+  "keywords": ["radarr", "plex", "jellyfin", "emby", "movies", "tmdb", "helparr"],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -26,3 +26,4 @@
   "engines": {
     "node": ">=18.0.0"
   }
+}
