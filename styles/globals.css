@@ -74,11 +74,16 @@
 @layer base {
   html {
     scroll-behavior: smooth;
+    /* Always show scrollbar to prevent layout shift */
+    overflow-y: scroll;
   }
   
   body {
     @apply bg-slate-900 text-white;
     font-feature-settings: 'rlig' 1, 'calt' 1;
+    /* Ensure consistent scrollbar space */
+    margin: 0;
+    padding: 0;
   }
   
   /* Focus styles for accessibility */
