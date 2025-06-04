@@ -9,7 +9,7 @@ import tenants from '../../lib/tenantStore';
  * Expects JSON body: { personId: string, roleType: "actor" | "director" | "producer", quality: string, tmdbKey: string }
  * Returns: { listUrl, webhookUrl, syncCurl }
  */
-export default function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
