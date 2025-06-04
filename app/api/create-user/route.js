@@ -1,4 +1,8 @@
 // app/api/create-user/route.js
+import { v4 as uuidv4 } from 'uuid';
+import { sign } from '../../../utils/hmac';
+import { saveTenant } from '../../../lib/kv';
+
 export async function POST(request) {
   const { userId, tmdbKey } = await request.json();
   
