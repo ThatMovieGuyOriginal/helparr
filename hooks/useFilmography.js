@@ -35,17 +35,24 @@ export function useFilmography(userId = '', tenantSecret = '') {
       
       const json = await res.json();
       if (res.ok) {
-        setFilmography(json.movies || []);
-        // Initialize all movies as selected by default
-        setSelectedMoviesInSearch(json.movies?.map(movie => ({ ...movie, selected: true })) || []);
+        const movies = json.movies || [];
+        setFilmography(movies);
+        
+        // Initialize all movies as selected by default with proper structure
+        const moviesWithSelection = movies.map(movie => ({
+          ...movie,
+          selected: true // Default to selected
+        }));
+        
+        setSelectedMoviesInSearch(moviesWithSelection);
         
         trackEvent('filmography_loaded', { 
           personName: person.name, 
           roleType: role,
-          movieCount: json.movies?.length || 0 
+          movieCount: movies.length 
         });
         
-        if (json.movies.length === 0) {
+        if (movies.length === 0) {
           throw new Error(`No ${role} credits found for ${person.name}`);
         }
       } else {
@@ -58,20 +65,35 @@ export function useFilmography(userId = '', tenantSecret = '') {
     }
   };
 
-  // Toggle movie selection in search view
+  // Toggle movie selection in search view - FIXED
   const toggleMovieInSearch = (movieId) => {
     setSelectedMoviesInSearch(prev => 
       prev.map(movie => 
-        movie.id === movieId ? { ...movie, selected: !movie.selected } : movie
+        movie.id === movieId 
+          ? { ...movie, selected: !movie.selected } 
+          : movie
       )
     );
+    
+    trackEvent('toggle_movie_selection', {
+      movieId,
+      personName: selectedPerson?.name,
+      roleType
+    });
   };
 
-  // Select all/none in search view
+  // Select all/none in search view - FIXED
   const selectAllInSearch = (selected = true) => {
     setSelectedMoviesInSearch(prev => 
       prev.map(movie => ({ ...movie, selected }))
     );
+    
+    trackEvent('select_all_movies', {
+      selected,
+      movieCount: selectedMoviesInSearch.length,
+      personName: selectedPerson?.name,
+      roleType
+    });
   };
 
   // Clear filmography
