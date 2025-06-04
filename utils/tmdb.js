@@ -44,7 +44,7 @@ export async function fetchCredits(personId, tmdbKey) {
 /**
  * Extract unique TMDb movie IDs from credits based on roleType
  * @param {object} credits - The TMDb movie_credits response
- * @param {string} roleType - One of "actor", "director", "producer"
+ * @param {string} roleType - One of "actor", "director", "producer", "sound", "writer"
  * @returns {number[]} Array of unique TMDb movie IDs
  */
 export function extractMovieIds(credits, roleType) {
@@ -57,13 +57,42 @@ export function extractMovieIds(credits, roleType) {
           movieIds.add(item.id);
         }
       });
-    } else if ((roleType === 'director' || roleType === 'producer') && credits.crew && Array.isArray(credits.crew)) {
+    } else if (credits.crew && Array.isArray(credits.crew)) {
       credits.crew.forEach(item => {
         if (item.id && typeof item.id === 'number') {
-          if (roleType === 'director' && item.job === 'Director') {
-            movieIds.add(item.id);
-          } else if (roleType === 'producer' && item.job && item.job.toLowerCase().includes('producer')) {
-            movieIds.add(item.id);
+          switch (roleType) {
+            case 'director':
+              if (item.job === 'Director') {
+                movieIds.add(item.id);
+              }
+              break;
+            case 'producer':
+              if (item.job && item.job.toLowerCase().includes('producer')) {
+                movieIds.add(item.id);
+              }
+              break;
+            case 'sound':
+              if (item.job && (
+                item.job.toLowerCase().includes('sound') ||
+                item.job.toLowerCase().includes('audio') ||
+                item.job === 'Sound Engineer' ||
+                item.job === 'Sound Designer' ||
+                item.job === 'Sound Mixer'
+              )) {
+                movieIds.add(item.id);
+              }
+              break;
+            case 'writer':
+              if (item.job && (
+                item.job.toLowerCase().includes('writer') ||
+                item.job.toLowerCase().includes('screenplay') ||
+                item.job === 'Screenplay' ||
+                item.job === 'Story' ||
+                item.job === 'Novel'
+              )) {
+                movieIds.add(item.id);
+              }
+              break;
           }
         }
       });
@@ -100,6 +129,6 @@ export function validatePersonId(personId) {
  * @returns {boolean} Whether the role type is valid
  */
 export function validateRoleType(roleType) {
-  const allowedRoles = ['actor', 'director', 'producer'];
+  const allowedRoles = ['actor', 'director', 'producer', 'sound', 'writer'];
   return typeof roleType === 'string' && allowedRoles.includes(roleType.toLowerCase());
 }
