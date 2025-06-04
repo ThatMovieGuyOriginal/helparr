@@ -1,4 +1,4 @@
-// app/api/list/[tenant]/route.js - Optimized version
+// app/api/list/[tenant]/route.js
 import { verify } from '../../../../utils/hmac.js';
 import { loadTenant, saveTenant } from '../../../../lib/kv.js';
 
@@ -102,13 +102,21 @@ export async function GET(request, { params }) {
       return Response.json([], { status: 200 });
     }
 
-    // Ensure the movies are in the exact Radarr format
+    // Ensure the movies are in the exact Radarr format with TMDb IDs
     const validMovies = movies
-      .filter(movie => movie && movie.title && (movie.imdb_id || movie.year))
+      .filter(movie => movie && movie.title && movie.imdb_id)
       .map(movie => {
-        const formatted = { title: movie.title };
-        if (movie.imdb_id) formatted.imdb_id = movie.imdb_id;
+        const formatted = { 
+          title: movie.title,
+          imdb_id: movie.imdb_id
+        };
         if (movie.year) formatted.year = movie.year;
+        
+        // CRITICAL: Include TMDb ID if available (this is what Radarr actually needs)
+        if (movie.tmdb_id) {
+          formatted.tmdb_id = movie.tmdb_id;
+        }
+        
         return formatted;
       });
 
