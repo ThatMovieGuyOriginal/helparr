@@ -17,11 +17,12 @@ export async function GET(request, { params }) {
     return Response.json({ error: 'Invalid signature' }, { status: 403 });
   }
 
-  // Return stored movie IDs (no TMDb API calls needed)
+  // Return stored movie IDs as direct array (not wrapped in object)
   const movieIds = tenant.movieIds ? JSON.parse(tenant.movieIds) : [];
   const movies = movieIds.map(id => ({ tmdbId: id }));
   
-  return Response.json({ movies }, { status: 200 });
+  // Return the array directly, not wrapped in an object
+  return Response.json(movies, { status: 200 });
 }
 
 export const dynamic = 'force-dynamic';
