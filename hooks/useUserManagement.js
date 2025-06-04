@@ -42,32 +42,6 @@ export function useUserManagement() {
     }
   };
 
-  // Reset everything
-  const resetSetup = (setters, setSuccess) => {
-    trackEvent('reset_all');
-    
-    localStorage.clear();
-    
-    // Reset all state
-    Object.values(setters).forEach(setter => {
-      if (typeof setter === 'function') {
-        if (setter.name.includes('Array') || setter.name.includes('Set')) {
-          setter(new (setter.constructor)());
-        } else if (setter.name.includes('Boolean')) {
-          setter(false);
-        } else {
-          setter('');
-        }
-      }
-    });
-    
-    // Generate new user ID
-    const newId = crypto.randomUUID();
-    localStorage.setItem('userId', newId);
-    setters.setUserId(newId);
-    setSuccess('All data has been reset. You can start fresh!');
-  };
-
   // Add person to list
   const addPersonToList = (selectedPerson, roleType, moviesToAdd, people, setPeople, updateSelectedMovies, setSuccess, setError, setCurrentView, clearFilmography) => {
     if (!selectedPerson) return;
@@ -111,6 +85,7 @@ export function useUserManagement() {
         id: selectedPerson.id,
         name: selectedPerson.name,
         profile_path: selectedPerson.profile_path,
+        type: 'person',
         roles: [{
           type: roleType,
           movies: moviesToAdd,
@@ -129,17 +104,64 @@ export function useUserManagement() {
     
     setSuccess(`Added ${moviesToAdd.length} movies from ${selectedPerson.name} (${roleType})`);
     clearFilmography();
-    setCurrentView('manage');
+    setCurrentView();
   };
 
-  // Remove person entirely
+  // Add collection to list
+  const addCollectionToList = (collection, moviesToAdd, people, setPeople, updateSelectedMovies, setSuccess, setError, setCurrentView, clearCollectionData) => {
+    if (!collection || !moviesToAdd.length) {
+      setError('Please select at least one movie to add.');
+      return;
+    }
+    
+    trackEvent('add_collection_to_list', { 
+      collectionName: collection.name,
+      collectionType: collection.type,
+      movieCount: moviesToAdd.length 
+    });
+    
+    // Create collection entry
+    const newCollection = {
+      id: `collection_${collection.type}_${collection.id}`,
+      name: collection.name,
+      type: 'collection',
+      collectionType: collection.type,
+      originalId: collection.id,
+      poster_path: collection.poster_path,
+      overview: collection.overview,
+      roles: [{
+        type: 'collection',
+        movies: moviesToAdd,
+        addedAt: new Date().toISOString()
+      }],
+      addedAt: new Date().toISOString()
+    };
+    
+    const updatedPeople = [...people, newCollection];
+    setPeople(updatedPeople);
+    localStorage.setItem('people', JSON.stringify(updatedPeople));
+    
+    // Update selected movies
+    updateSelectedMovies(updatedPeople);
+    
+    setSuccess(`Added ${moviesToAdd.length} movies from ${collection.name}`);
+    clearCollectionData();
+    setCurrentView();
+  };
+
+  // Remove person/collection entirely
   const removePerson = (personId, people, setPeople, updateSelectedMovies) => {
+    const item = people.find(p => p.id === personId);
     const updatedPeople = people.filter(p => p.id !== personId);
     setPeople(updatedPeople);
     localStorage.setItem('people', JSON.stringify(updatedPeople));
     updateSelectedMovies(updatedPeople);
     
-    trackEvent('remove_person', { personId });
+    trackEvent('remove_item', { 
+      itemId: personId,
+      itemType: item?.type || 'person',
+      itemName: item?.name 
+    });
   };
 
   // Remove specific role from person
@@ -216,8 +238,8 @@ export function useUserManagement() {
   return {
     generateRssUrl,
     confirmReset,
-    resetSetup,
     addPersonToList,
+    addCollectionToList,
     removePerson,
     removeRole,
     toggleMovieForPerson,
