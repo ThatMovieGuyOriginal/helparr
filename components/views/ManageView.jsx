@@ -35,9 +35,24 @@ export default function ManageView({
 
   const handleConfirmReset = () => {
     userManagement.confirmReset(() => {
-      // This would need to be passed down from parent or handled differently
-      // For now, we'll keep the logic in the parent component
-      console.log('Reset confirmed');
+      // Reset all state
+      setPeople([]);
+      localStorage.removeItem('people');
+      localStorage.removeItem('selectedMovies');
+      localStorage.removeItem('tmdbKey');
+      localStorage.removeItem('tenantSecret');
+      localStorage.removeItem('rssUrl');
+      
+      // Generate new user ID
+      const newId = crypto.randomUUID();
+      localStorage.setItem('userId', newId);
+      
+      setSuccess('All data has been reset. You can start fresh!');
+      
+      // Redirect to setup
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
     });
   };
 
