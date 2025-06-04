@@ -2,14 +2,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { generateSignature, trackEvent } from '../utils/analytics';
 
-export function usePersonSearch(userId, tenantSecret) {
+export function usePersonSearch(userId = '', tenantSecret = '') {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
 
   // Search for people with debouncing
   const searchPeople = useCallback(async (query) => {
-    if (!query || query.length < 2) {
+    if (!query || query.length < 2 || !userId || !tenantSecret) {
       setSearchResults([]);
       return;
     }
@@ -44,6 +44,11 @@ export function usePersonSearch(userId, tenantSecret) {
 
   // Handle search input changes with debouncing
   useEffect(() => {
+    if (!userId || !tenantSecret) {
+      setSearchResults([]);
+      return;
+    }
+
     if (searchQuery.trim() === '') {
       setSearchResults([]);
       return;
@@ -58,7 +63,7 @@ export function usePersonSearch(userId, tenantSecret) {
     }, 300);
     
     return () => clearTimeout(timer);
-  }, [searchQuery, searchPeople]);
+  }, [searchQuery, searchPeople, userId, tenantSecret]);
 
   return {
     searchQuery,
