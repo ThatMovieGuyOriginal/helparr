@@ -76,6 +76,12 @@ export async function POST(request) {
       return Response.json({ error: 'Missing parameters' }, { status: 400 });
     }
 
+    // Validate role type
+    const allowedRoles = ['actor', 'director', 'producer', 'sound', 'writer'];
+    if (!allowedRoles.includes(roleType)) {
+      return Response.json({ error: 'Invalid role type' }, { status: 400 });
+    }
+
     const tenant = await loadTenant(userId);
     if (!tenant) {
       return Response.json({ error: 'User not found' }, { status: 404 });
