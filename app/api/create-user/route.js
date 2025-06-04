@@ -22,13 +22,17 @@ export async function POST(request) {
       movieIds: JSON.stringify([]) // Start with empty array as JSON string
     });
 
-    // Build URLs
-    const base = `${process.env.VERCEL_URL ? 'https://' : 'http://'}${process.env.VERCEL_URL || request.headers.get('host')}`;
+    // Build URLs using production domain with protection bypass
+    const base = 'https://helparr.vercel.app';
     const listSig = sign(userId, tenantSecret);
     const webhookSig = sign(`webhook:${userId}`, tenantSecret);
 
-    const listUrl = `${base}/api/list/${userId}?sig=${listSig}`;
-    const webhookUrl = `${base}/api/webhook/${userId}?sig=${webhookSig}`;
+    const bypassParam = process.env.VERCEL_AUTOMATION_BYPASS_SECRET 
+      ? `&x-vercel-protection-bypass=${process.env.VERCEL_AUTOMATION_BYPASS_SECRET}` 
+      : '';
+
+    const listUrl = `${base}/api/list/${userId}?sig=${listSig}${bypassParam}`;
+    const webhookUrl = `${base}/api/webhook/${userId}?sig=${webhookSig}${bypassParam}`;
 
     return Response.json({ listUrl, webhookUrl }, { status: 200 });
   } catch (error) {
