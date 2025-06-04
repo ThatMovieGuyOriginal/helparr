@@ -2,7 +2,7 @@
   "popularCompanies": [
     {
       "id": 7505,
-      "name": "Marvel Entertainment",
+      "name": "Marvel Entertainment", 
       "popularity": 100,
       "category": "superhero",
       "description": "Marvel Cinematic Universe and Marvel productions",
@@ -12,8 +12,8 @@
       "id": 420,
       "name": "Marvel Enterprises",
       "popularity": 95,
-      "category": "superhero", 
-      "description": "Early Marvel movie productions",
+      "category": "superhero",
+      "description": "Early Marvel movie productions", 
       "movie_count": 25
     },
     {
@@ -36,7 +36,7 @@
       "id": 3,
       "name": "Pixar Animation Studios",
       "popularity": 96,
-      "category": "animation",
+      "category": "animation", 
       "description": "Pixar animated movies",
       "movie_count": 25
     },
@@ -52,8 +52,8 @@
       "id": 25,
       "name": "20th Century Fox",
       "popularity": 93,
-      "category": "major_studio", 
-      "description": "20th Century Fox productions",
+      "category": "major_studio",
+      "description": "20th Century Fox productions", 
       "movie_count": 250
     },
     {
@@ -66,7 +66,7 @@
     },
     {
       "id": 4,
-      "name": "Paramount Pictures",
+      "name": "Paramount Pictures", 
       "popularity": 91,
       "category": "major_studio",
       "description": "Paramount studio movies",
