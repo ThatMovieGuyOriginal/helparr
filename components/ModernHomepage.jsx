@@ -1,4 +1,3 @@
-// components/ModernHomepage.jsx
 import { useState, useEffect, useCallback } from 'react';
 
 // HMAC-SHA256 signature generation (client-side)
@@ -363,7 +362,7 @@ export default function ModernHomepage() {
         {/* Header */}
         <header className="text-center mb-8">
           <h1 className="text-4xl md:text-6xl font-bold text-white mb-4 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-            MovieCurator
+            Helparr
           </h1>
           <p className="text-xl text-slate-300 max-w-2xl mx-auto">
             Create custom movie lists for Radarr by actor and director. 
