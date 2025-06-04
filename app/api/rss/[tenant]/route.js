@@ -1,4 +1,4 @@
-// app/api/rss-test/[tenant]/route.js
+// app/api/rss/[tenant]/route.js - Test RSS format
 import { verify } from '../../../../utils/hmac.js';
 import { loadTenant } from '../../../../lib/kv.js';
 
@@ -19,14 +19,30 @@ export async function GET(request, { params }) {
     }
 
     const cachedMovies = tenant.cachedMovies ? JSON.parse(tenant.cachedMovies) : [];
-    const testMovies = cachedMovies.slice(0, 3);
+    
+    if (cachedMovies.length === 0) {
+      console.log('No cached movies found');
+      const emptyRss = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Custom Movie List</title>
+    <description>Movies from TMDb</description>
+    <link>https://helparr.vercel.app</link>
+    <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
+  </channel>
+</rss>`;
+      return new Response(emptyRss, {
+        status: 200,
+        headers: { 'Content-Type': 'application/rss+xml; charset=utf-8' }
+      });
+    }
 
-    // Create RSS format as specified in Servarr wiki
-    const rssItems = testMovies.map(movie => 
-      `<item>
-        <title><![CDATA[ ${movie.title} (${movie.year || 'Unknown'}) ]]></title>
-        <guid isPermaLink="false">${movie.title} (${movie.year || 'Unknown'})</guid>
-      </item>`
+    // Use ALL cached movies, not just first 3
+    const rssItems = cachedMovies.map(movie => 
+      `    <item>
+      <title><![CDATA[ ${movie.title} (${movie.year || 'Unknown'}) ]]></title>
+      <guid isPermaLink="false">${movie.imdb_id || movie.title + (movie.year || 'Unknown')}</guid>
+    </item>`
     ).join('\n');
 
     const rssContent = `<?xml version="1.0" encoding="UTF-8"?>
@@ -40,12 +56,13 @@ export async function GET(request, { params }) {
   </channel>
 </rss>`;
 
-    console.log(`Returning RSS with ${testMovies.length} movies`);
+    console.log(`Returning RSS with ${cachedMovies.length} movies`);
 
     return new Response(rssContent, {
       status: 200,
       headers: {
-        'Content-Type': 'application/rss+xml; charset=utf-8'
+        'Content-Type': 'application/rss+xml; charset=utf-8',
+        'X-Movie-Count': cachedMovies.length.toString()
       }
     });
 
