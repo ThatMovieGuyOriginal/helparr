@@ -1,5 +1,5 @@
 // components/views/SetupView.jsx
-export function SetupView({ tmdbKey, setTmdbKey, onSubmit, isLoading }) {
+export default function SetupView({ tmdbKey, setTmdbKey, onSubmit, isLoading }) {
   return (
     <div className="max-w-md mx-auto">
       <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-8 border border-slate-700">
