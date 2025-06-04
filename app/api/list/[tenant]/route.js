@@ -1,14 +1,12 @@
-// app/api/list/[tenant]/route.js
+// app/api/list/[tenant]/route.js - Radarr-compatible version
 import { verify } from '../../../../utils/hmac.js';
 import { loadTenant, saveTenant } from '../../../../lib/kv.js';
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 
-// Batch fetch movie details with concurrent requests
 async function batchGetMovieDetails(movieIds, apiKey, batchSize = 20) {
   const results = [];
   
-  // Process in batches to avoid overwhelming TMDb API
   for (let i = 0; i < movieIds.length; i += batchSize) {
     const batch = movieIds.slice(i, i + batchSize);
     
@@ -21,12 +19,23 @@ async function batchGetMovieDetails(movieIds, apiKey, batchSize = 20) {
           return null;
         }
         const movie = await res.json();
-        return {
-          tmdbId,
-          title: movie.title,
-          imdb_id: movie.imdb_id || undefined,
-          year: movie.release_date ? new Date(movie.release_date).getFullYear() : undefined
+        
+        // Format exactly as Radarr expects
+        const movieData = {
+          title: movie.title
         };
+        
+        // Add IMDB ID with tt prefix if available
+        if (movie.imdb_id) {
+          movieData.imdb_id = movie.imdb_id;
+        }
+        
+        // Add year if available
+        if (movie.release_date) {
+          movieData.year = new Date(movie.release_date).getFullYear();
+        }
+        
+        return movieData;
       } catch (error) {
         console.warn(`Error fetching TMDb ID ${tmdbId}:`, error.message);
         return null;
@@ -36,7 +45,7 @@ async function batchGetMovieDetails(movieIds, apiKey, batchSize = 20) {
     const batchResults = await Promise.all(promises);
     results.push(...batchResults.filter(movie => movie !== null));
     
-    // Small delay between batches to be respectful to TMDb API
+    // Small delay between batches
     if (i + batchSize < movieIds.length) {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
@@ -45,11 +54,10 @@ async function batchGetMovieDetails(movieIds, apiKey, batchSize = 20) {
   return results;
 }
 
-// Check if cached data is still fresh (less than 1 hour old)
 function isCacheFresh(lastUpdated) {
   if (!lastUpdated) return false;
   const cacheAge = Date.now() - new Date(lastUpdated).getTime();
-  return cacheAge < 60 * 60 * 1000; // 1 hour in milliseconds
+  return cacheAge < 60 * 60 * 1000; // 1 hour
 }
 
 export async function GET(request, { params }) {
@@ -62,6 +70,7 @@ export async function GET(request, { params }) {
   console.log('=== LIST REQUEST DEBUG ===');
   console.log('Tenant ID:', tenantId);
   console.log('Force refresh:', forceRefresh);
+  console.log('User Agent:', request.headers.get('user-agent') || 'Unknown');
 
   try {
     const tenant = await loadTenant(tenantId);
@@ -77,57 +86,47 @@ export async function GET(request, { params }) {
       return Response.json({ error: 'Invalid signature' }, { status: 403 });
     }
 
-    // Get stored movie IDs
     const movieIds = tenant.movieIds ? JSON.parse(tenant.movieIds) : [];
     
     if (movieIds.length === 0) {
-      console.log('No movies in list');
-      return Response.json([], { status: 200 });
+      console.log('No movies in list, returning empty array');
+      return Response.json([], { 
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
     }
 
     console.log(`Processing ${movieIds.length} movies`);
 
-    // Check if we have cached movie details that are still fresh
     let movies = [];
-    const cachedMovies = tenant.cachedMovies ? JSON.parse(tenant.cachedMovies) : [];
+    const cachedMovies = tenant.radarrFormattedCache ? JSON.parse(tenant.radarrFormattedCache) : [];
     const cacheIsFresh = !forceRefresh && isCacheFresh(tenant.cacheLastUpdated);
 
     if (cacheIsFresh && cachedMovies.length > 0) {
-      console.log('Using cached movie details');
+      console.log('Using cached Radarr-formatted movie details');
       movies = cachedMovies;
     } else {
       console.log('Fetching fresh movie details from TMDb');
       
-      // Fetch movie details with timeout protection
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Request timeout')), 8000) // 8 second timeout
+        setTimeout(() => reject(new Error('Request timeout')), 8000)
       );
       
       const fetchPromise = batchGetMovieDetails(movieIds, tenant.tmdbKey);
       
       try {
-        const movieDetails = await Promise.race([fetchPromise, timeoutPromise]);
+        movies = await Promise.race([fetchPromise, timeoutPromise]);
         
-        // Format for Radarr
-        movies = movieDetails.map(movie => {
-          const result = { title: movie.title };
-          if (movie.imdb_id) {
-            result.imdb_id = movie.imdb_id;
-          }
-          if (movie.year) {
-            result.year = movie.year;
-          }
-          return result;
-        });
-
-        // Cache the results
+        // Cache the Radarr-formatted results
         await saveTenant(tenantId, {
           ...tenant,
-          cachedMovies: JSON.stringify(movies),
+          radarrFormattedCache: JSON.stringify(movies),
           cacheLastUpdated: new Date().toISOString()
         });
         
-        console.log(`Cached ${movies.length} movie details`);
+        console.log(`Cached ${movies.length} Radarr-formatted movie details`);
       } catch (error) {
         if (error.message === 'Request timeout') {
           console.log('Request timed out, using cached data if available');
@@ -138,14 +137,24 @@ export async function GET(request, { params }) {
       }
     }
 
-    const processingTime = Date.now() - startTime;
-    console.log(`Request completed in ${processingTime}ms, returning ${movies.length} movies`);
+    // Filter out any invalid entries
+    const validMovies = movies.filter(movie => 
+      movie && movie.title && (movie.imdb_id || movie.year)
+    );
 
-    return Response.json(movies, { 
+    const processingTime = Date.now() - startTime;
+    console.log(`Request completed in ${processingTime}ms`);
+    console.log(`Returning ${validMovies.length} valid movies`);
+    console.log(`Sample movies: ${JSON.stringify(validMovies.slice(0, 2))}`);
+
+    // Return exactly as Radarr expects - plain JSON array
+    return new Response(JSON.stringify(validMovies), {
       status: 200,
       headers: {
-        'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
-        'X-Processing-Time': processingTime.toString()
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=3600',
+        'X-Processing-Time': processingTime.toString(),
+        'X-Movie-Count': validMovies.length.toString()
       }
     });
 
