@@ -21,42 +21,18 @@ export async function GET(request, { params }) {
       return new Response('Invalid signature', { status: 403 });
     }
 
-    // Get selected movies from query parameter (sent by frontend)
-    const selectedMoviesParam = url.searchParams.get('movies');
+    // Get selected movies from Redis storage instead of URL params
     let selectedMovies = [];
-    
-    if (selectedMoviesParam) {
+    if (tenant.selectedMovies) {
       try {
-        selectedMovies = JSON.parse(decodeURIComponent(selectedMoviesParam));
+        selectedMovies = JSON.parse(tenant.selectedMovies);
       } catch (error) {
-        console.warn('Failed to parse selected movies:', error);
+        console.warn('Failed to parse selected movies from storage:', error);
       }
     }
 
-    if (selectedMovies.length === 0) {
-      // Return empty RSS feed
-      const emptyRss = `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0">
-  <channel>
-    <title>Helparr - No Movies Selected</title>
-    <description>Select movies in the web interface to populate this feed</description>
-    <link>https://helparr.vercel.app</link>
-    <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
-    <ttl>60</ttl>
-  </channel>
-</rss>`;
-      
-      return new Response(emptyRss, {
-        status: 200,
-        headers: { 
-          'Content-Type': 'application/rss+xml; charset=utf-8',
-          'Cache-Control': 'public, max-age=3600'
-        }
-      });
-    }
-
-    // Generate RSS items for selected movies
-    const rssItems = selectedMovies.map(movie => {
+    // Always return valid RSS, even if empty
+    const rssItems = selectedMovies.length > 0 ? selectedMovies.map(movie => {
       const pubDate = movie.release_date ? new Date(movie.release_date).toUTCString() : new Date().toUTCString();
       const description = movie.overview ? movie.overview.substring(0, 200) + '...' : 'No description available.';
       
@@ -67,13 +43,19 @@ export async function GET(request, { params }) {
       <pubDate>${pubDate}</pubDate>
       <link>https://www.imdb.com/title/${movie.imdb_id}/</link>
     </item>`;
-    }).join('\n');
+    }).join('\n') : `    <item>
+      <title><![CDATA[Getting Started with Helparr]]></title>
+      <description><![CDATA[Welcome to Helparr! Search for actors and directors to start building your movie list. This placeholder item will be replaced once you add movies.]]></description>
+      <guid isPermaLink="false">helparr-getting-started</guid>
+      <pubDate>${new Date().toUTCString()}</pubDate>
+      <link>https://helparr.vercel.app</link>
+    </item>`;
 
     const rssContent = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
     <title>Helparr Movie List</title>
-    <description>Curated movie list from TMDb</description>
+    <description>Curated movie list from TMDb - ${selectedMovies.length} movies selected</description>
     <link>https://helparr.vercel.app</link>
     <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
     <ttl>60</ttl>
@@ -88,14 +70,16 @@ ${rssItems}
       status: 200,
       headers: {
         'Content-Type': 'application/rss+xml; charset=utf-8',
-        'Cache-Control': 'public, max-age=3600',
-        'X-Movie-Count': selectedMovies.length.toString()
+        'Cache-Control': 'public, max-age=60', // Cache for 1 minute
+        'X-Movie-Count': selectedMovies.length.toString(),
+        'X-Has-Movies': selectedMovies.length > 0 ? 'true' : 'false'
       }
     });
 
   } catch (error) {
     console.error('RSS Error:', error);
     
+    // Return valid RSS even on error
     const errorRss = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
@@ -103,11 +87,18 @@ ${rssItems}
     <description>An error occurred generating the RSS feed</description>
     <link>https://helparr.vercel.app</link>
     <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
+    <item>
+      <title><![CDATA[RSS Feed Error]]></title>
+      <description><![CDATA[There was an error generating your movie list. Please check your Helparr configuration.]]></description>
+      <guid isPermaLink="false">helparr-error</guid>
+      <pubDate>${new Date().toUTCString()}</pubDate>
+      <link>https://helparr.vercel.app</link>
+    </item>
   </channel>
 </rss>`;
     
     return new Response(errorRss, {
-      status: 500,
+      status: 200, // Return 200 so Radarr doesn't error
       headers: { 'Content-Type': 'application/rss+xml; charset=utf-8' }
     });
   }
