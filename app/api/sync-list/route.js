@@ -7,7 +7,7 @@ export async function POST(request) {
     const url = new URL(request.url);
     const sig = url.searchParams.get('sig') || '';
     
-    const { userId, selectedMovies, actors } = await request.json();
+    const { userId, selectedMovies, people } = await request.json();
     
     if (!userId) {
       return Response.json({ error: 'Missing user ID' }, { status: 400 });
@@ -26,35 +26,36 @@ export async function POST(request) {
       return Response.json({ error: 'Invalid signature' }, { status: 403 });
     }
 
-    // Store minimal backup data in Redis (just IDs and metadata)
-    const backupData = {
+    // Store selected movies and people data in Redis
+    const updateData = {
+      selectedMovies: JSON.stringify(selectedMovies || []),
+      people: JSON.stringify(people || []),
       movieCount: selectedMovies?.length || 0,
-      actorCount: actors?.length || 0,
+      personCount: people?.length || 0,
       lastSync: new Date().toISOString()
     };
 
-    // Update tenant with sync info
+    // Update tenant with movie list
     await saveTenant(userId, {
       ...tenant,
-      ...backupData
+      ...updateData
     });
 
-    // Generate the RSS URL with selected movies as parameter
+    // Generate clean RSS URL (no movie data in params)
     const base = 'https://helparr.vercel.app';
     const rssSig = verify(`rss:${userId}`, tenant.tenantSecret, '');
-    const moviesParam = selectedMovies ? encodeURIComponent(JSON.stringify(selectedMovies)) : '';
     
     const bypassParam = process.env.VERCEL_AUTOMATION_BYPASS_SECRET 
       ? `&x-vercel-protection-bypass=${process.env.VERCEL_AUTOMATION_BYPASS_SECRET}` 
       : '';
 
-    const rssUrl = `${base}/api/rss/${userId}?sig=${rssSig}&movies=${moviesParam}${bypassParam}`;
+    const rssUrl = `${base}/api/rss/${userId}?sig=${rssSig}${bypassParam}`;
 
     return Response.json({ 
       rssUrl,
       synced: true,
-      movieCount: backupData.movieCount,
-      actorCount: backupData.actorCount
+      movieCount: updateData.movieCount,
+      personCount: updateData.personCount
     });
     
   } catch (error) {
