@@ -29,6 +29,13 @@ export default function handler(req, res) {
   const tenantId = uuidv4();
   const tenantSecret = uuidv4().replace(/-/g, '');
 
+  await saveTenant(tenantId, {
+    tenantSecret,
+    personId,
+    roleType,
+    tmdbKey,
+  });
+
   // Store tmdbKey + other info in our shared store (in memory only)
   tenants[tenantId] = { tenantSecret, personId, roleType, tmdbKey };
 
