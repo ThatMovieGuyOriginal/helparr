@@ -1,14 +1,9 @@
 // components/views/ManageView.jsx
-// Integrated manage view with collection intelligence and efficiency dashboard
 
 import { useState, useEffect } from 'react';
 import { useUserManagement } from '../../hooks/useUserManagement';
-import { migrationManager } from '../../lib/MigrationManager';
-import { dataManager } from '../../lib/DataManager';
-import { monetizationManager } from '../../lib/MonetizationManager';
 import PersonManager from '../person/PersonManager';
-import EfficiencyDashboard from '../insights/EfficiencyDashboard';
-import { enhancedAnalytics } from '../../utils/enhanced-analytics';
+import { trackEvent } from '../../utils/analytics';
 
 export default function ManageView({
   people,
@@ -30,40 +25,36 @@ export default function ManageView({
   const [activeTab, setActiveTab] = useState('overview');
   const [showExportImport, setShowExportImport] = useState(false);
   const [usageStats, setUsageStats] = useState(null);
-  const [healthStatus, setHealthStatus] = useState(null);
   const userManagement = useUserManagement();
 
-  // Load usage stats and health status
+  // Load basic stats without monetization dependencies
   useEffect(() => {
-    loadDashboardData();
+    loadBasicStats();
   }, [people, selectedMovies, userId]);
 
-  const loadDashboardData = async () => {
+  const loadBasicStats = () => {
     try {
-      // Get usage statistics (for monetization awareness)
-      const stats = monetizationManager.getUsageStats(userId);
+      // Get basic usage statistics without monetization manager
+      const stats = {
+        peopleCount: people.filter(p => p.type !== 'collection').length,
+        collectionCount: people.filter(p => p.type === 'collection').length,
+        movieCount: selectedMovies.length,
+        totalRoles: people.reduce((acc, person) => acc + (person.roles?.length || 0), 0)
+      };
       setUsageStats(stats);
-
-      // Get system health status
-      const health = await migrationManager.performHealthCheck();
-      setHealthStatus(health);
-
     } catch (error) {
-      console.warn('Failed to load dashboard data:', error);
+      console.warn('Failed to load basic stats:', error);
+      setUsageStats({
+        peopleCount: 0,
+        collectionCount: 0,
+        movieCount: 0,
+        totalRoles: 0
+      });
     }
   };
 
   const handleGenerateRssUrl = async () => {
-    // Check if user can perform this action (respects limits when active)
-    const permission = monetizationManager.canPerformAction(userId, 'generate_rss', {
-      totalMovies: selectedMovies.length
-    });
-
-    if (!permission.allowed) {
-      setError(`${permission.reason}: ${permission.limit} movie limit reached. ${permission.upgrade ? 'Consider upgrading to Pro for unlimited movies.' : ''}`);
-      return;
-    }
-
+    // Simple RSS generation without monetization checks for now
     userManagement.generateRssUrl(
       userId,
       tenantSecret,
@@ -77,7 +68,18 @@ export default function ManageView({
 
   const handleExportData = async () => {
     try {
-      const exportData = dataManager.exportConfiguration();
+      const exportData = {
+        version: '2.0',
+        exportDate: new Date().toISOString(),
+        people,
+        selectedMovies,
+        settings: {
+          tmdbKey: localStorage.getItem('tmdbKey'),
+          userId,
+          rssUrl
+        }
+      };
+
       const blob = new Blob([JSON.stringify(exportData, null, 2)], { 
         type: 'application/json' 
       });
@@ -92,7 +94,7 @@ export default function ManageView({
       URL.revokeObjectURL(url);
       
       setSuccess('Collection exported successfully!');
-      enhancedAnalytics.trackEvent('data_exported', {
+      trackEvent('data_exported', {
         movieCount: selectedMovies.length,
         peopleCount: people.length
       });
@@ -106,33 +108,42 @@ export default function ManageView({
     if (!file) return;
 
     try {
-      const result = await dataManager.importConfiguration(file, { mergeMode: 'merge' });
+      const text = await file.text();
+      const importData = JSON.parse(text);
       
-      // Refresh the page data
-      const updatedPeople = dataManager.getPeople();
-      const updatedMovies = dataManager.getSelectedMovies();
+      // Validate basic structure
+      if (!importData.people || !Array.isArray(importData.people)) {
+        throw new Error('Invalid backup file format');
+      }
+
+      // Merge with existing data
+      const existingPeople = people;
+      const peopleMap = new Map(existingPeople.map(p => [p.id, p]));
       
-      setPeople(updatedPeople);
-      updateSelectedMovies(updatedPeople);
+      importData.people.forEach(person => {
+        if (!peopleMap.has(person.id)) {
+          peopleMap.set(person.id, person);
+        }
+      });
       
-      setSuccess(`Successfully imported ${result.imported.movieCount} movies and ${result.imported.peopleCount} people!`);
+      const mergedPeople = Array.from(peopleMap.values());
+      setPeople(mergedPeople);
+      localStorage.setItem('people', JSON.stringify(mergedPeople));
+      updateSelectedMovies(mergedPeople);
       
-      enhancedAnalytics.trackEvent('data_imported', {
-        importedMovies: result.imported.movieCount,
-        importedPeople: result.imported.peopleCount,
-        mergeMode: result.mergeMode
+      setSuccess(`Successfully imported ${importData.people.length} items!`);
+      trackEvent('data_imported', {
+        importedItems: importData.people.length
       });
     } catch (error) {
       setError('Import failed: ' + error.message);
     }
     
-    // Reset file input
     event.target.value = '';
   };
 
   const handleConfirmReset = () => {
     userManagement.confirmReset(() => {
-      // Reset all state
       setPeople([]);
       localStorage.removeItem('people');
       localStorage.removeItem('selectedMovies');
@@ -140,13 +151,11 @@ export default function ManageView({
       localStorage.removeItem('tenantSecret');
       localStorage.removeItem('rssUrl');
       
-      // Generate new user ID
       const newId = crypto.randomUUID();
       localStorage.setItem('userId', newId);
       
       setSuccess('All data has been reset. You can start fresh!');
       
-      // Redirect to setup
       setTimeout(() => {
         window.location.reload();
       }, 1000);
@@ -171,13 +180,12 @@ export default function ManageView({
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
-    enhancedAnalytics.trackEvent('manage_tab_changed', { tab });
+    trackEvent('manage_tab_changed', { tab });
   };
 
   const tabs = [
     { key: 'overview', label: '📊 Overview', count: null },
     { key: 'collection', label: '🎬 Collection', count: people.length },
-    { key: 'insights', label: '💡 Insights', count: null },
     { key: 'data', label: '⚙️ Data', count: null }
   ];
 
@@ -212,39 +220,23 @@ export default function ManageView({
         </div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-purple-400">{selectedMovies.length}</div>
-            <div className="text-sm text-slate-400">Movies Selected</div>
-            {usageStats?.limits.movies !== Infinity && (
-              <div className="text-xs text-slate-500">
-                {usageStats.limits.movies - selectedMovies.length} remaining
-              </div>
-            )}
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-blue-400">{people.length}</div>
-            <div className="text-sm text-slate-400">Sources Added</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-green-400">
-              {people.filter(p => p.type === 'person').length}
+        {usageStats && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-purple-400">{usageStats.movieCount}</div>
+              <div className="text-sm text-slate-400">Movies Selected</div>
             </div>
-            <div className="text-sm text-slate-400">People</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-yellow-400">
-              {people.filter(p => p.type === 'collection').length}
+            <div className="text-center">
+              <div className="text-2xl font-bold text-blue-400">{people.length}</div>
+              <div className="text-sm text-slate-400">Sources Added</div>
             </div>
-            <div className="text-sm text-slate-400">Collections</div>
-          </div>
-        </div>
-
-        {/* Usage Warnings (when approaching limits) */}
-        {usageStats?.percentages && Object.values(usageStats.percentages).some(p => p > 80) && (
-          <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-            <div className="text-sm text-yellow-200">
-              📊 You're approaching your limits! Consider the Pro upgrade for unlimited capacity.
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-400">{usageStats.peopleCount}</div>
+              <div className="text-sm text-slate-400">People</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-yellow-400">{usageStats.collectionCount}</div>
+              <div className="text-sm text-slate-400">Collections</div>
             </div>
           </div>
         )}
@@ -333,19 +325,6 @@ export default function ManageView({
                 </p>
               </div>
             )}
-
-            {/* Health Status */}
-            {healthStatus && (healthStatus.needsMigration || healthStatus.needsRepair) && (
-              <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4">
-                <h3 className="font-medium text-yellow-200 mb-2">⚠️ System Status</h3>
-                {healthStatus.needsMigration && (
-                  <p className="text-sm text-yellow-300">Migration available to improve your data structure.</p>
-                )}
-                {healthStatus.needsRepair && (
-                  <p className="text-sm text-yellow-300">Data integrity issues detected. Consider using Import/Export to refresh your data.</p>
-                )}
-              </div>
-            )}
           </div>
         )}
 
@@ -386,106 +365,55 @@ export default function ManageView({
           </div>
         )}
 
-        {activeTab === 'insights' && (
-          <EfficiencyDashboard 
-            people={people} 
-            selectedMovies={selectedMovies}
-          />
-        )}
-
         {activeTab === 'data' && (
           <div className="space-y-6">
-            {/* Data Statistics */}
             <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
               <h3 className="text-lg font-bold text-white mb-4">📊 Data Statistics</h3>
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <h4 className="font-medium text-white mb-3">Storage Usage</h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Local Storage:</span>
-                      <span className="text-white">{dataManager.getDataStats().storageUsed.kb} KB</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Last Backup:</span>
-                      <span className="text-white">
-                        {dataManager.getDataStats().lastBackup 
-                          ? new Date(dataManager.getDataStats().lastBackup).toLocaleDateString()
-                          : 'Never'
-                        }
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Data Version:</span>
-                      <span className="text-white">{migrationManager.getUserVersion()}</span>
-                    </div>
-                  </div>
-                </div>
-                
-                <div>
-                  <h4 className="font-medium text-white mb-3">Usage Limits</h4>
-                  {usageStats && (
+              {usageStats && (
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div>
+                    <h4 className="font-medium text-white mb-3">Collection Overview</h4>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Current Tier:</span>
-                        <span className="text-white capitalize">{usageStats.tier}</span>
+                        <span className="text-slate-400">Total Movies:</span>
+                        <span className="text-white">{usageStats.movieCount}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Movie Limit:</span>
-                        <span className="text-white">
-                          {usageStats.limits.movies === Infinity ? 'Unlimited' : usageStats.limits.movies.toLocaleString()}
-                        </span>
+                        <span className="text-slate-400">Total Sources:</span>
+                        <span className="text-white">{people.length}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Movies Used:</span>
+                        <span className="text-slate-400">People:</span>
+                        <span className="text-white">{usageStats.peopleCount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Collections:</span>
+                        <span className="text-white">{usageStats.collectionCount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Total Roles:</span>
+                        <span className="text-white">{usageStats.totalRoles}</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <h4 className="font-medium text-white mb-3">Storage Info</h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Data Version:</span>
+                        <span className="text-white">2.0</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Last Updated:</span>
                         <span className="text-white">
-                          {selectedMovies.length.toLocaleString()} ({Math.round(usageStats.percentages.movies)}%)
+                          {new Date().toLocaleDateString()}
                         </span>
                       </div>
                     </div>
-                  )}
+                  </div>
                 </div>
-              </div>
-            </div>
-
-            {/* Advanced Actions */}
-            <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
-              <h3 className="text-lg font-bold text-white mb-4">🔧 Advanced Actions</h3>
-              <div className="grid md:grid-cols-2 gap-4">
-                <button
-                  onClick={() => {
-                    dataManager.createBackup();
-                    setSuccess('Backup created successfully!');
-                  }}
-                  className="p-4 bg-blue-600/20 border border-blue-500/30 rounded-lg text-left hover:bg-blue-600/30 transition-colors"
-                >
-                  <div className="font-medium text-blue-300 mb-1">💾 Create Backup</div>
-                  <div className="text-sm text-slate-400">
-                    Manually create a backup of your current data
-                  </div>
-                </button>
-                
-                <button
-                  onClick={async () => {
-                    try {
-                      const validation = await migrationManager.validateDataIntegrity();
-                      if (validation.isValid) {
-                        setSuccess('Data integrity check passed! ✅');
-                      } else {
-                        setError(`Data issues found: ${validation.errors.join(', ')}`);
-                      }
-                    } catch (error) {
-                      setError('Validation failed: ' + error.message);
-                    }
-                  }}
-                  className="p-4 bg-green-600/20 border border-green-500/30 rounded-lg text-left hover:bg-green-600/30 transition-colors"
-                >
-                  <div className="font-medium text-green-300 mb-1">✅ Validate Data</div>
-                  <div className="text-sm text-slate-400">
-                    Check your data for integrity issues
-                  </div>
-                </button>
-              </div>
+              )}
             </div>
           </div>
         )}
