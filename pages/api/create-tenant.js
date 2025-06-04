@@ -1,8 +1,8 @@
+// pages/api/create-tenant.js
 import { v4 as uuidv4 } from 'uuid';
 import { sign } from '../../utils/hmac';
-
-// In-memory store: key = tenantId, value = { tenantSecret, personId, roleType, tmdbKey }
-const tenants = {};
+// IMPORT the single shared store
+import tenants from '../../lib/tenantStore';
 
 /**
  * API Route: Create a new tenant.
@@ -25,22 +25,28 @@ export default function handler(req, res) {
     return res.status(400).json({ error: 'personId must be numeric' });
   }
 
-  // Create tenantId and secret
+  // Create tenantId and tenantSecret
   const tenantId = uuidv4();
   const tenantSecret = uuidv4().replace(/-/g, '');
-  // Store tmdbKey in memory only
+
+  // Store tmdbKey + other info in our shared store (in memory only)
   tenants[tenantId] = { tenantSecret, personId, roleType, tmdbKey };
 
-  // Base URL for constructing signed endpoints
+  // Build our base URL (either https://yourdomain or localhost in dev)
   const base = req.headers.origin || `https://${req.headers.host}`;
-  // Sign list URL
+
+  // Sign the list URL
   const listSignature = sign(tenantId, tenantSecret);
   const listUrl = `${base}/api/list/${tenantId}?sig=${listSignature}`;
-  // Sign webhook URL with prefix
+
+  // Sign the webhook URL with the "webhook:" prefix
   const webhookSignature = sign(`webhook:${tenantId}`, tenantSecret);
   const webhookUrl = `${base}/api/webhook/${tenantId}?sig=${webhookSignature}`;
-  // Sync-Now curl command
-  const syncCurl = `curl -X POST http://localhost:7878/api/v3/command?apikey=<APIKEY> -d '{"name":"ImportListSync"}'`;
+
+  // This is the “Sync‐Now” curl line the user will paste into Radarr’s Custom Script
+  const syncCurl =
+    `curl -X POST http://localhost:7878/api/v3/command?apikey=<APIKEY> ` +
+    `-d '{"name":"ImportListSync"}'`;
 
   return res.status(200).json({ listUrl, webhookUrl, syncCurl });
 }
