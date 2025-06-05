@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useUserManagement } from '../../hooks/useUserManagement';
 import PersonManager from '../person/PersonManager';
+import RssUrlDisplay from '../ui/RssUrlDisplay'; // Import the new component
 import { trackEvent } from '../../utils/analytics';
 
 export default function ManageView({
@@ -14,6 +15,7 @@ export default function ManageView({
   setExpandedPeople,
   userId,
   tenantSecret,
+  setTenantSecret, // Add this prop to update tenant secret
   rssUrl,
   setRssUrl,
   setSuccess,
@@ -150,6 +152,7 @@ export default function ManageView({
       localStorage.removeItem('tmdbKey');
       localStorage.removeItem('tenantSecret');
       localStorage.removeItem('rssUrl');
+      localStorage.removeItem('rss_regeneration_history'); // Clear regeneration history too
       
       const newId = crypto.randomUUID();
       localStorage.setItem('userId', newId);
@@ -301,29 +304,19 @@ export default function ManageView({
       <div className="min-h-[400px]">
         {activeTab === 'overview' && (
           <div className="space-y-6">
-            {/* RSS URL Section */}
+            {/* Enhanced RSS URL Section with Regeneration */}
             {rssUrl && (
-              <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  RSS Feed URL for Radarr:
-                </label>
-                <div className="flex">
-                  <input
-                    readOnly
-                    value={rssUrl}
-                    className="flex-1 px-3 py-2 bg-slate-600 border border-slate-500 rounded-l-lg text-white text-sm"
-                  />
-                  <button
-                    onClick={copyRssUrl}
-                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-r-lg transition-colors duration-200"
-                  >
-                    {copySuccess ? '✓ Copied!' : 'Copy'}
-                  </button>
-                </div>
-                <p className="text-xs text-slate-400 mt-2">
-                  🎯 This URL stays the same regardless of how many movies you add. Safe to add to Radarr immediately!
-                </p>
-              </div>
+              <RssUrlDisplay
+                rssUrl={rssUrl}
+                setRssUrl={setRssUrl}
+                userId={userId}
+                tenantSecret={tenantSecret}
+                setTenantSecret={setTenantSecret}
+                setSuccess={setSuccess}
+                setError={setError}
+                copySuccess={copySuccess}
+                copyRssUrl={copyRssUrl}
+              />
             )}
           </div>
         )}
