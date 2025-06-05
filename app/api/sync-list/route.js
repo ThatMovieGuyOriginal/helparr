@@ -1,5 +1,5 @@
 // app/api/sync-list/route.js
-import { verify } from '../../../utils/hmac';
+import { verify, sign } from '../../../utils/hmac';
 import { loadTenant, saveTenant } from '../../../lib/kv';
 
 export async function POST(request) {
@@ -43,7 +43,7 @@ export async function POST(request) {
 
     // Generate clean RSS URL (no movie data in params)
     const base = 'https://helparr.vercel.app';
-    const rssSig = verify(`rss:${userId}`, tenant.tenantSecret, '');
+    const rssSig = sign(`rss:${userId}`, tenant.tenantSecret, '');
     
     const bypassParam = process.env.VERCEL_AUTOMATION_BYPASS_SECRET 
       ? `&x-vercel-protection-bypass=${process.env.VERCEL_AUTOMATION_BYPASS_SECRET}` 
