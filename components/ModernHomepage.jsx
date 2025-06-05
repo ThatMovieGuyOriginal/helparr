@@ -1,4 +1,5 @@
-// components/ModernHomepage.jsx - Enhanced Version with Collections
+// components/ModernHomepage.jsx
+
 import { useState, useEffect } from 'react';
 import { generateSignature, trackEvent } from '../utils/analytics';
 import { usePersonSearch } from '../hooks/usePersonSearch';
@@ -17,7 +18,7 @@ export default function ModernHomepage() {
   const [userId, setUserId] = useState('');
   const [isSetup, setIsSetup] = useState(false);
   const [tmdbKey, setTmdbKey] = useState('');
-  const [tenantSecret, setTenantSecret] = useState('');
+  const [tenantSecret, setTenantSecret] = useState(''); // Make this updateable
   const [rssUrl, setRssUrl] = useState('');
   
   // UI states
@@ -28,11 +29,11 @@ export default function ModernHomepage() {
   const [copySuccess, setCopySuccess] = useState(false);
   
   // Management states
-  const [people, setPeople] = useState([]); // Now includes both people and collections
+  const [people, setPeople] = useState([]);
   const [selectedMovies, setSelectedMovies] = useState([]);
   const [expandedPeople, setExpandedPeople] = useState(new Set());
 
-  // Custom hooks
+  // Custom hooks - pass tenantSecret as state that can be updated
   const personSearch = usePersonSearch(userId, tenantSecret);
   const filmography = useFilmography(userId, tenantSecret);
   const collectionSearch = useCollectionSearch(userId, tenantSecret);
@@ -112,7 +113,6 @@ export default function ModernHomepage() {
         const parsedPeople = JSON.parse(savedPeople);
         setPeople(parsedPeople);
         
-        // Track what types of items user has
         trackEvent('data_loaded', {
           itemCount: parsedPeople.length,
           ...categorizeItems(parsedPeople)
@@ -273,7 +273,6 @@ export default function ModernHomepage() {
     setSelectedMovies(allMovies);
     localStorage.setItem('selectedMovies', JSON.stringify(allMovies));
     
-    // Track movie list changes
     trackEvent('movie_list_updated', {
       movieCount: allMovies.length,
       itemCount: itemsList.length,
@@ -314,6 +313,12 @@ export default function ModernHomepage() {
     };
   };
 
+  // Function to update tenant secret (for RSS regeneration)
+  const updateTenantSecret = (newSecret) => {
+    setTenantSecret(newSecret);
+    localStorage.setItem('tenantSecret', newSecret);
+  };
+
   const sharedProps = {
     error,
     success,
@@ -327,6 +332,7 @@ export default function ModernHomepage() {
     setExpandedPeople,
     userId,
     tenantSecret,
+    setTenantSecret: updateTenantSecret, // Pass the updater function
     rssUrl,
     setRssUrl,
     copySuccess,
@@ -454,7 +460,7 @@ export default function ModernHomepage() {
               <div className="flex justify-center items-center space-x-4 text-xs">
                 <span>v2.1.0</span>
                 <span>•</span>
-                <span>Enhanced with Collections</span>
+                <span>Enhanced with Collections & RSS Regeneration</span>
                 <span>•</span>
                 <a 
                   href="https://github.com/ThatMovieGuyOriginal/helparr" 
