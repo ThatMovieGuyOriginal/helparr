@@ -14,5 +14,22 @@ export function sign(data, secret) {
  */
 export function verify(data, secret, signature) {
   const expected = sign(data, secret);
-  return expected === signature;
+
+  if (typeof signature !== 'string') {
+    return false;
+  }
+
+  const provided = signature.toLowerCase();
+  const valid = expected.toLowerCase();
+
+  if (provided.length !== valid.length) {
+    return false;
+  }
+
+  let diff = 0;
+  for (let i = 0; i < valid.length; i++) {
+    diff |= valid.charCodeAt(i) ^ provided.charCodeAt(i);
+  }
+
+  return diff === 0;
 }
