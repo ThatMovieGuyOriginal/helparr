@@ -1,91 +1,322 @@
 // components/DemoView.jsx
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { trackEvent } from '../utils/analytics';
-
-const DEMO_PEOPLE = [
-  { 
-    id: 1,
-    name: 'Tom Hanks',
-    known_for_department: 'Acting',
-    known_for: ['Forrest Gump', 'Cast Away', 'Toy Story'],
-    profile_path: '/xndWFsBlClOJFRdhSt4NBwiPq2o.jpg'
-  },
-  {
-    id: 2,
-    name: 'Christopher Nolan',
-    known_for_department: 'Directing', 
-    known_for: ['Inception', 'Interstellar', 'The Dark Knight'],
-    profile_path: '/xuAIuYSmsUzKlUMBFGVZaWsY3DZ.jpg'
-  },
-  {
-    id: 3,
-    name: 'Margot Robbie',
-    known_for_department: 'Acting',
-    known_for: ['Barbie', 'The Wolf of Wall Street', 'Suicide Squad'],
-    profile_path: '/euDPyqLnuwaWMHajcU3oZ9uZezR.jpg'
-  }
-];
 
 export default function DemoView({ onGetStarted }) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [hoveredPerson, setHoveredPerson] = useState(null);
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [selectedPerson, setSelectedPerson] = useState(null);
+  const [filmography, setFilmography] = useState([]);
+  const [filmographyLoading, setFilmographyLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [demoMessage, setDemoMessage] = useState('');
 
-  const filteredPeople = searchQuery.length > 0
-    ? DEMO_PEOPLE.filter(p => 
-        p.name.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : DEMO_PEOPLE;
+  // Auto-search with debouncing
+  useEffect(() => {
+    if (searchQuery.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      handleDemoSearch();
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const handleDemoSearch = async () => {
+    setSearchLoading(true);
+    setError('');
+    
+    try {
+      trackEvent('demo_search', { query: searchQuery.toLowerCase() });
+      
+      const response = await fetch('/api/demo/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: searchQuery })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        setSearchResults(data.people || []);
+        setDemoMessage(data.message || '');
+        
+        if (data.error) {
+          setError(data.error);
+        }
+        
+        trackEvent('demo_search_results', { 
+          query: searchQuery.toLowerCase(),
+          resultCount: data.people?.length || 0,
+          demo: true
+        });
+      } else {
+        setError(data.error || 'Search failed');
+        setSearchResults([]);
+        
+        // Show suggestions if available
+        if (data.suggestions) {
+          setDemoMessage(`Try searching for: ${data.suggestions.join(', ')}`);
+        }
+      }
+    } catch (err) {
+      setError('Demo search failed. Please try again.');
+      setSearchResults([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const handlePersonClick = async (person, roleType = 'actor') => {
+    setSelectedPerson({ ...person, roleType });
+    setFilmographyLoading(true);
+    setError('');
+    
+    try {
+      trackEvent('demo_get_filmography', { 
+        personName: person.name,
+        roleType,
+        demo: true
+      });
+      
+      const response = await fetch('/api/demo/filmography', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          personId: person.id,
+          roleType
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        setFilmography(data.movies || []);
+        setDemoMessage(data.message || '');
+        
+        trackEvent('demo_filmography_loaded', {
+          personName: person.name,
+          roleType,
+          movieCount: data.movies?.length || 0,
+          demo: true
+        });
+      } else {
+        setError(data.error || 'Failed to load filmography');
+        setFilmography([]);
+      }
+    } catch (err) {
+      setError('Failed to load demo filmography');
+      setFilmography([]);
+    } finally {
+      setFilmographyLoading(false);
+    }
+  };
+
+  const clearDemo = () => {
+    setSelectedPerson(null);
+    setFilmography([]);
+    setError('');
+    setDemoMessage('');
+  };
 
   return (
     <div>
-      {/* Try it section */}
-      <div className="bg-slate-800 rounded-xl p-6 mb-6">
-        <h2 className="text-2xl font-bold mb-4">Try it out - No signup needed!</h2>
-        
-        <input
-          type="text"
-          placeholder="Search for an actor or director..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          onFocus={() => trackEvent('demo_interaction', { action: 'search_focus' })}
-          className="w-full px-4 py-3 bg-slate-700 rounded-lg text-white placeholder-slate-400 mb-4"
-        />
-
-        <div className="space-y-3">
-          {filteredPeople.map(person => (
-            <div
-              key={person.id}
-              className="flex items-center space-x-4 p-4 bg-slate-700 hover:bg-slate-600 rounded-lg cursor-pointer transition-all"
-              onMouseEnter={() => setHoveredPerson(person.id)}
-              onMouseLeave={() => setHoveredPerson(null)}
-              onClick={() => {
-                trackEvent('demo_interaction', { action: 'person_clicked', person: person.name });
-                alert(`In the full app, you'd see all ${person.name}'s movies and select which ones to add to Radarr!`);
-              }}
-            >
-              {person.profile_path && (
-                <img
-                  src={`https://image.tmdb.org/t/p/w92${person.profile_path}`}
-                  alt={person.name}
-                  className="w-12 h-12 rounded-full object-cover"
-                />
-              )}
-              <div className="flex-1">
-                <h3 className="font-semibold text-white">{person.name}</h3>
-                <p className="text-sm text-slate-400">
-                  {person.known_for_department} • Known for: {person.known_for.join(', ')}
-                </p>
-              </div>
-              <div className={`transition-opacity ${hoveredPerson === person.id ? 'opacity-100' : 'opacity-0'}`}>
-                <span className="text-purple-400">Click to explore →</span>
-              </div>
-            </div>
-          ))}
+      {/* Demo Banner */}
+      <div className="bg-gradient-to-r from-purple-600/20 to-blue-600/20 border border-purple-500/30 rounded-xl p-4 mb-6">
+        <div className="flex items-center space-x-2 mb-2">
+          <span className="text-2xl">🎬</span>
+          <h2 className="text-xl font-bold text-white">Try Helparr Demo</h2>
+          <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-full">LIVE DATA</span>
         </div>
+        <p className="text-purple-200 text-sm">
+          Search for popular actors and directors to see real movie data! 
+          Limited to prevent abuse - sign up for unlimited access.
+        </p>
       </div>
 
-      {/* Value props */}
+      {/* Demo Messages */}
+      {demoMessage && (
+        <div className="bg-blue-500/20 border border-blue-500 rounded-lg p-4 mb-4">
+          <p className="text-blue-200 text-sm">{demoMessage}</p>
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-500/20 border border-red-500 rounded-lg p-4 mb-4">
+          <div className="flex items-center justify-between">
+            <p className="text-red-200 text-sm">{error}</p>
+            <button onClick={() => setError('')} className="text-red-200 hover:text-white">✕</button>
+          </div>
+        </div>
+      )}
+
+      {/* Search Interface */}
+      {!selectedPerson && (
+        <div className="bg-slate-800 rounded-xl p-6 mb-6">
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Try searching: Tom Hanks, Christopher Nolan, Margot Robbie..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                trackEvent('demo_interaction', { action: 'search_input' });
+              }}
+              className="w-full px-4 py-3 bg-slate-700 rounded-lg text-white placeholder-slate-400 pr-12"
+            />
+            {searchLoading && (
+              <div className="absolute right-3 top-3 animate-spin w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full"></div>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-2 mt-4">
+            <span className="text-sm text-slate-400">Popular searches:</span>
+            {['Tom Hanks', 'Christopher Nolan', 'Margot Robbie', 'Leonardo DiCaprio'].map(name => (
+              <button
+                key={name}
+                onClick={() => setSearchQuery(name)}
+                className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm rounded-full transition-colors"
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+
+          {/* Search Results */}
+          {searchResults.length > 0 && (
+            <div className="mt-6 space-y-3">
+              {searchResults.map(person => (
+                <div key={person.id} className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
+                  <div className="flex items-center space-x-4">
+                    {person.profile_path ? (
+                      <img
+                        src={`https://image.tmdb.org/t/p/w92${person.profile_path}`}
+                        alt={person.name}
+                        className="w-16 h-16 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 bg-slate-600 rounded-full flex items-center justify-center text-2xl">
+                        👤
+                      </div>
+                    )}
+                    
+                    <div className="flex-1">
+                      <h3 className="font-medium text-white">{person.name}</h3>
+                      <p className="text-sm text-slate-400">{person.known_for_department}</p>
+                      {person.known_for && (
+                        <p className="text-xs text-slate-500 mt-1">Known for: {person.known_for}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {['actor', 'director', 'producer'].map(role => (
+                      <button
+                        key={role}
+                        onClick={() => handlePersonClick(person, role)}
+                        className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg transition-colors capitalize"
+                      >
+                        View as {role}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Filmography Display */}
+      {selectedPerson && (
+        <div className="bg-slate-800 rounded-xl p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-bold text-white">
+              {selectedPerson.name}'s {selectedPerson.roleType} credits
+            </h3>
+            <button
+              onClick={clearDemo}
+              className="text-slate-400 hover:text-white"
+            >
+              ← Back to search
+            </button>
+          </div>
+
+          {filmographyLoading ? (
+            <div className="text-center py-8">
+              <div className="animate-spin w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+              <p className="text-slate-400">Loading demo filmography...</p>
+            </div>
+          ) : filmography.length > 0 ? (
+            <div>
+              <div className="bg-yellow-600/20 border border-yellow-500 rounded-lg p-3 mb-4">
+                <p className="text-yellow-200 text-sm">
+                  🎬 Demo showing {filmography.length} recent movies (pre-selected). 
+                  Sign up to see complete filmography and make your own selections!
+                </p>
+              </div>
+
+              <div className="grid gap-3 max-h-96 overflow-y-auto">
+                {filmography.map(movie => (
+                  <div
+                    key={movie.id}
+                    className="flex items-center space-x-3 p-3 bg-purple-600/20 border border-purple-500 rounded-lg"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={true}
+                      disabled={true}
+                      className="w-4 h-4 text-purple-600 rounded opacity-50"
+                    />
+                    {movie.poster_path && (
+                      <img
+                        src={`https://image.tmdb.org/t/p/w92${movie.poster_path}`}
+                        alt={movie.title}
+                        className="w-12 h-18 object-cover rounded"
+                      />
+                    )}
+                    <div className="flex-1">
+                      <h4 className="font-medium text-white">
+                        {movie.title} ({movie.year})
+                      </h4>
+                      {movie.vote_average > 0 && (
+                        <p className="text-sm text-slate-400">
+                          ⭐ {movie.vote_average.toFixed(1)}/10
+                        </p>
+                      )}
+                      {movie.overview && (
+                        <p className="text-xs text-slate-500 mt-1">{movie.overview}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 p-4 bg-green-600/20 border border-green-500 rounded-lg">
+                <p className="text-green-200 text-sm mb-2">
+                  ✅ In the full version, you would now:
+                </p>
+                <ul className="text-green-200 text-sm space-y-1 ml-4">
+                  <li>• Select which movies you want</li>
+                  <li>• Generate an RSS feed instantly</li>
+                  <li>• Add the feed to Radarr</li>
+                  <li>• Automatically download these movies</li>
+                </ul>
+              </div>
+            </div>
+          ) : (
+            <p className="text-slate-400 text-center py-8">
+              No {selectedPerson.roleType} credits found in demo.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Value Props */}
       <div className="grid md:grid-cols-3 gap-4 mb-8">
         <div className="bg-slate-800/50 p-4 rounded-lg">
           <div className="text-2xl mb-2">🚀</div>
@@ -94,8 +325,8 @@ export default function DemoView({ onGetStarted }) {
         </div>
         <div className="bg-slate-800/50 p-4 rounded-lg">
           <div className="text-2xl mb-2">🎬</div>
-          <h3 className="font-semibold mb-1">Bulk Add Movies</h3>
-          <p className="text-sm text-slate-400">Select all movies by any actor/director</p>
+          <h3 className="font-semibold mb-1">Unlimited Access</h3>
+          <p className="text-sm text-slate-400">Search any actor, director, or collection</p>
         </div>
         <div className="bg-slate-800/50 p-4 rounded-lg">
           <div className="text-2xl mb-2">📡</div>
@@ -106,14 +337,17 @@ export default function DemoView({ onGetStarted }) {
 
       {/* CTA */}
       <button
-        onClick={onGetStarted}
+        onClick={() => {
+          trackEvent('demo_get_started_clicked');
+          onGetStarted();
+        }}
         className="w-full py-4 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg text-lg transition-colors"
       >
-        Get Started Free →
+        Get Started Free - Unlimited Access →
       </button>
       
       <p className="text-center text-sm text-slate-500 mt-4">
-        Used by 15+ Radarr users • 100% free • No credit card
+        No demo limits • Search anyone • 100% free • No credit card
       </p>
     </div>
   );
