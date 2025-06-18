@@ -5,6 +5,7 @@ import { useCollectionSearch } from '../../hooks/useCollectionSearch';
 import SearchFilmographySelector from '../filmography/SearchFilmographySelector';
 import CollectionSearchInterface from '../collections/CollectionSearchInterface';
 import { trackEvent } from '../../utils/analytics';
+import { SearchDebugger } from '../debug/SearchDebugger';
 
 export default function SearchView({ 
   personSearch, 
@@ -230,6 +231,7 @@ export default function SearchView({
           )}
         </div>
       )}
+      <SearchDebugger searchResults={searchResults} />
     </div>
   );
 }
