@@ -65,7 +65,8 @@ function cleanupDemoRateLimit() {
   }
 }
 
-function safeProcessKnownFor(knownForArray) {
+// Simple processing function - always returns string (demo version)
+function processKnownFor(knownForArray) {
   if (!Array.isArray(knownForArray)) {
     return '';
   }
@@ -138,13 +139,13 @@ export async function POST(request) {
     
     const data = await response.json();
     
-    // Format results - limit quantity for demo, not content
-    const people = data.results.slice(0, 8).map(person => ({ // Max 8 results in demo
+    // FIXED: Format results - consistent processing at API boundary
+    const people = data.results.slice(0, 8).map(person => ({
       id: person.id,
       name: person.name || 'Unknown',
       profile_path: person.profile_path,
       known_for_department: person.known_for_department || 'Acting',
-      known_for: safeProcessKnownFor(person.known_for)
+      known_for: processKnownFor(person.known_for) // ALWAYS returns string
     }));
 
     // Cache the results
