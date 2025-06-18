@@ -1,4 +1,4 @@
-// components/views/SearchView.jsx
+// components/views/SearchView.jsx - SIMPLIFIED (NO UTILITY NEEDED)
 import { useState } from 'react';
 import { useUserManagement } from '../../hooks/useUserManagement';
 import { useCollectionSearch } from '../../hooks/useCollectionSearch';
@@ -141,7 +141,7 @@ export default function SearchView({
               )}
             </div>
 
-            {/* People Search Results */}
+            {/* People Search Results - SIMPLIFIED */}
             {searchResults.length > 0 && (
               <div className="mt-6 grid gap-4 md:grid-cols-2">
                 {searchResults.map(person => (
@@ -162,8 +162,11 @@ export default function SearchView({
                       <div className="flex-1">
                         <h3 className="font-medium text-white">{person.name}</h3>
                         <p className="text-sm text-slate-400">{person.known_for_department}</p>
+                        {/* SIMPLIFIED: No special handling needed - API returns string */}
                         {person.known_for && (
-                          <p className="text-xs text-slate-500 mt-1 line-clamp-2">Known for: {person.known_for}</p>
+                          <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                            Known for: {person.known_for}
+                          </p>
                         )}
                       </div>
                     </div>
