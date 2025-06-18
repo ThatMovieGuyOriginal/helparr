@@ -1,49 +1,39 @@
 // components/SetupView.jsx
-
 import { useState } from 'react';
 import { trackEvent } from '../utils/analytics';
 
-export default function SetupView({ onComplete }) {
+export default function SetupView({ onComplete, isLoading }) {
   const [apiKey, setApiKey] = useState('');
   const [error, setError] = useState('');
-  const [testing, setTesting] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setTesting(true);
     
     trackEvent('setup_started');
 
     // Validate key format
     if (!/^[a-f0-9]{32}$/i.test(apiKey)) {
       setError('Invalid API key format. Should be 32 characters.');
-      setTesting(false);
       return;
     }
 
-    // Test the API key
+    // Call the parent completion handler
     try {
-      const res = await fetch(`https://api.themoviedb.org/3/configuration?api_key=${apiKey}`);
-      if (!res.ok) {
-        throw new Error('Invalid API key');
-      }
-      onComplete(apiKey);
+      await onComplete(apiKey);
     } catch (err) {
-      setError('Invalid TMDb API key. Please check and try again.');
-    } finally {
-      setTesting(false);
+      setError('Setup failed. Please try again.');
     }
   };
 
   return (
     <div className="max-w-md mx-auto">
-      <div className="bg-slate-800 rounded-xl p-6">
-        <h2 className="text-2xl font-bold mb-4">Quick Setup</h2>
+      <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-8 border border-slate-700">
+        <h2 className="text-2xl font-bold text-white mb-6 text-center">Get Started</h2>
         
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
               TMDb API Key
             </label>
             <input
@@ -51,20 +41,28 @@ export default function SetupView({ onComplete }) {
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value.trim())}
               placeholder="Enter your TMDb API key..."
-              className="w-full px-4 py-3 bg-slate-700 rounded-lg text-white placeholder-slate-400"
+              className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               required
+              disabled={isLoading}
             />
             {error && (
               <p className="text-red-400 text-sm mt-2">{error}</p>
             )}
+            <p className="text-sm text-slate-400 mt-2">
+              Get your free API key from{' '}
+              <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer" 
+                 className="text-purple-400 hover:text-purple-300">
+                themoviedb.org
+              </a>
+            </p>
           </div>
-
+          
           <button
             type="submit"
-            disabled={testing}
-            className="w-full py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-600 text-white font-semibold rounded-lg transition-colors"
+            disabled={isLoading}
+            className="w-full px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-600 text-white font-medium rounded-lg transition-colors duration-200"
           >
-            {testing ? 'Testing API Key...' : 'Continue →'}
+            {isLoading ? 'Setting up...' : 'Create Movie List'}
           </button>
         </form>
 
