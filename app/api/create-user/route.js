@@ -1,4 +1,5 @@
 // app/api/create-user/route.js
+
 import { v4 as uuidv4 } from 'uuid';
 import { sign } from '../../../utils/hmac';
 import { saveTenant } from '../../../lib/kv';
@@ -20,14 +21,20 @@ export async function POST(request) {
     // Create user-specific tenant with minimal Redis footprint
     const tenantSecret = uuidv4().replace(/-/g, '');
     
-    // Only store essential data in Redis - lists will be in localStorage
+    // Store essential data in Redis - Initialize with empty collections so RSS works immediately
     await saveTenant(userId, { 
       tenantSecret, 
       tmdbKey,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      // Initialize empty collections - RSS URL will work immediately
+      selectedMovies: JSON.stringify([]),
+      people: JSON.stringify([]),
+      movieCount: 0,
+      personCount: 0,
+      lastSync: new Date().toISOString()
     });
 
-    // Build RSS URL with protection bypass
+    // Build PERMANENT RSS URL - this never changes for this user
     const base = 'https://helparr.vercel.app';
     const rssSig = sign(`rss:${userId}`, tenantSecret);
     
@@ -37,7 +44,11 @@ export async function POST(request) {
 
     const rssUrl = `${base}/api/rss/${userId}?sig=${rssSig}${bypassParam}`;
 
-    return Response.json({ rssUrl, tenantSecret }, { status: 200 });
+    return Response.json({ 
+      rssUrl, 
+      tenantSecret,
+      message: 'RSS URL ready! Add this to Radarr now - it will update automatically as you add movies.'
+    }, { status: 200 });
   } catch (error) {
     console.error('API Error:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });
