@@ -1,134 +1,78 @@
 // utils/tmdb.js
-// Enhanced TMDb utilities with better error handling and caching
-
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 
-/**
- * Fetch movie credits for a given TMDb person ID
- * @param {string} personId - Numeric TMDb person ID
- * @param {string} tmdbKey - User-provided TMDb API key
- * @returns {Promise<object>} TMDb movie_credits JSON
- */
-export async function fetchCredits(personId, tmdbKey) {
-  const url = `${TMDB_BASE}/person/${personId}/movie_credits?api_key=${tmdbKey}`;
+export async function searchPeople(query, apiKey) {
+  const url = `${TMDB_BASE}/search/person?api_key=${apiKey}&query=${encodeURIComponent(query)}`;
+  const res = await fetch(url);
   
-  try {
-    const res = await fetch(url, {
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'Helparr/2.0'
+  if (!res.ok) {
+    if (res.status === 401) throw new Error('Invalid TMDb API key');
+    throw new Error('Search failed');
+  }
+  
+  const data = await res.json();
+  return data.results.slice(0, 5).map(person => ({
+    id: person.id,
+    name: person.name,
+    known_for_department: person.known_for_department,
+    profile_path: person.profile_path,
+    known_for: person.known_for?.map(m => m.title || m.name).filter(Boolean).slice(0, 3)
+  }));
+}
+
+export async function getPersonMovies(personId, apiKey) {
+  const url = `${TMDB_BASE}/person/${personId}/movie_credits?api_key=${apiKey}`;
+  const res = await fetch(url);
+  
+  if (!res.ok) throw new Error('Failed to fetch movies');
+  
+  const data = await res.json();
+  
+  // Combine cast and crew, remove duplicates
+  const movieMap = new Map();
+  
+  [...(data.cast || []), ...(data.crew || [])]
+    .filter(m => m.release_date) // Only released movies
+    .forEach(movie => {
+      if (!movieMap.has(movie.id)) {
+        movieMap.set(movie.id, {
+          id: movie.id,
+          title: movie.title,
+          year: new Date(movie.release_date).getFullYear(),
+          poster_path: movie.poster_path,
+          vote_average: movie.vote_average
+        });
       }
     });
-    
-    if (!res.ok) {
-      if (res.status === 401) {
-        throw new Error('Invalid TMDb API key');
-      } else if (res.status === 404) {
-        throw new Error('Person not found on TMDb');
-      } else if (res.status === 429) {
-        throw new Error('TMDb API rate limit exceeded. Please try again later.');
-      } else {
-        throw new Error(`TMDb API error: ${res.status} ${res.statusText}`);
+  
+  return Array.from(movieMap.values())
+    .sort((a, b) => b.year - a.year)
+    .slice(0, 50); // Limit to 50 most recent
+}
+
+export async function getMovieDetails(movieIds, apiKey) {
+  // Fetch IMDB IDs for RSS feed
+  const movies = [];
+  
+  for (const id of movieIds.slice(0, 20)) { // Limit API calls
+    try {
+      const url = `${TMDB_BASE}/movie/${id}?api_key=${apiKey}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const movie = await res.json();
+        if (movie.imdb_id) {
+          movies.push({
+            id: movie.id,
+            title: movie.title,
+            imdb_id: movie.imdb_id,
+            year: new Date(movie.release_date).getFullYear()
+          });
+        }
       }
+    } catch {
+      // Skip failed movies
     }
-    
-    return res.json();
-  } catch (error) {
-    if (error.message.includes('fetch')) {
-      throw new Error('Network error. Please check your connection.');
-    }
-    throw error;
-  }
-}
-
-/**
- * Extract unique TMDb movie IDs from credits based on roleType
- * @param {object} credits - The TMDb movie_credits response
- * @param {string} roleType - One of "actor", "director", "producer", "sound", "writer"
- * @returns {number[]} Array of unique TMDb movie IDs
- */
-export function extractMovieIds(credits, roleType) {
-  const movieIds = new Set();
-  
-  try {
-    if (roleType === 'actor' && credits.cast && Array.isArray(credits.cast)) {
-      credits.cast.forEach(item => {
-        if (item.id && typeof item.id === 'number') {
-          movieIds.add(item.id);
-        }
-      });
-    } else if (credits.crew && Array.isArray(credits.crew)) {
-      credits.crew.forEach(item => {
-        if (item.id && typeof item.id === 'number') {
-          switch (roleType) {
-            case 'director':
-              if (item.job === 'Director') {
-                movieIds.add(item.id);
-              }
-              break;
-            case 'producer':
-              if (item.job && item.job.toLowerCase().includes('producer')) {
-                movieIds.add(item.id);
-              }
-              break;
-            case 'sound':
-              if (item.job && (
-                item.job.toLowerCase().includes('sound') ||
-                item.job.toLowerCase().includes('audio') ||
-                item.job === 'Sound Engineer' ||
-                item.job === 'Sound Designer' ||
-                item.job === 'Sound Mixer'
-              )) {
-                movieIds.add(item.id);
-              }
-              break;
-            case 'writer':
-              if (item.job && (
-                item.job.toLowerCase().includes('writer') ||
-                item.job.toLowerCase().includes('screenplay') ||
-                item.job === 'Screenplay' ||
-                item.job === 'Story' ||
-                item.job === 'Novel'
-              )) {
-                movieIds.add(item.id);
-              }
-              break;
-          }
-        }
-      });
-    }
-  } catch (error) {
-    console.warn('Error extracting movie IDs:', error);
   }
   
-  return Array.from(movieIds).sort((a, b) => a - b);
-}
-
-/**
- * Validate TMDb API key format
- * @param {string} apiKey - The API key to validate
- * @returns {boolean} Whether the key format is valid
- */
-export function validateApiKey(apiKey) {
-  return typeof apiKey === 'string' && /^[a-f0-9]{32}$/i.test(apiKey);
-}
-
-/**
- * Validate person ID
- * @param {string|number} personId - The person ID to validate
- * @returns {boolean} Whether the ID is valid
- */
-export function validatePersonId(personId) {
-  const id = parseInt(personId);
-  return !isNaN(id) && id > 0 && id < 10000000;
-}
-
-/**
- * Validate role type
- * @param {string} roleType - The role type to validate
- * @returns {boolean} Whether the role type is valid
- */
-export function validateRoleType(roleType) {
-  const allowedRoles = ['actor', 'director', 'producer', 'sound', 'writer'];
-  return typeof roleType === 'string' && allowedRoles.includes(roleType.toLowerCase());
+  return movies;
 }
