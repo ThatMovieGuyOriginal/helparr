@@ -3,10 +3,9 @@
   "version": "2.0.0",
   "private": true,
   "description": "Create custom movie lists for Radarr by actor and director",
-  "keywords": ["radarr", "plex", "jellyfin", "emby", "movies", "tmdb", "helparr"],
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build", 
     "start": "next start",
     "lint": "next lint"
   },
@@ -14,7 +13,6 @@
     "next": "14.0.0",
     "react": "18.2.0",
     "react-dom": "18.2.0",
-    "crypto-js": "^4.2.0",
     "uuid": "^9.0.1",
     "redis": "^4.6.0"
   },
