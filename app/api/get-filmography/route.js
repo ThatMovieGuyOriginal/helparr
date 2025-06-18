@@ -1,7 +1,6 @@
 // app/api/get-filmography/route.js
 import { verify } from '../../../utils/hmac';
 import { loadTenant } from '../../../lib/kv';
-import { fetchCredits, extractMovieIds } from '../../../utils/tmdb';
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 
@@ -12,7 +11,107 @@ function getCacheKey(personId, roleType) {
   return `${personId}-${roleType}`;
 }
 
+// Extract movie IDs with full error handling
+function extractMovieIds(credits, roleType) {
+  try {
+    if (!credits || typeof credits !== 'object') {
+      console.log('🔍 Invalid credits object:', credits);
+      return [];
+    }
+
+    let movies = [];
+    
+    switch (roleType) {
+      case 'actor':
+        movies = Array.isArray(credits.cast) ? credits.cast : [];
+        break;
+      case 'director':
+        movies = Array.isArray(credits.crew) 
+          ? credits.crew.filter(job => job && job.job === 'Director') 
+          : [];
+        break;
+      case 'producer':
+        movies = Array.isArray(credits.crew) 
+          ? credits.crew.filter(job => job && job.job === 'Producer') 
+          : [];
+        break;
+      case 'sound':
+        movies = Array.isArray(credits.crew) 
+          ? credits.crew.filter(job => job && (job.department === 'Sound' || (job.job && job.job.includes('Sound')))) 
+          : [];
+        break;
+      case 'writer':
+        movies = Array.isArray(credits.crew) 
+          ? credits.crew.filter(job => job && job.job && 
+              (job.job === 'Writer' || job.job === 'Screenplay' || job.job === 'Story')) 
+          : [];
+        break;
+      default:
+        movies = Array.isArray(credits.cast) ? credits.cast : [];
+    }
+    
+    console.log(`🔍 Extracted ${movies.length} ${roleType} credits`);
+    
+    return movies
+      .filter(movie => movie && movie.release_date && movie.id)
+      .sort((a, b) => new Date(b.release_date) - new Date(a.release_date))
+      .slice(0, 50) // Limit to 50 movies
+      .map(movie => movie.id);
+      
+  } catch (error) {
+    console.error('🔍 Error extracting movie IDs:', error);
+    return [];
+  }
+}
+
+// Fetch credits with retry logic
+async function fetchCredits(personId, apiKey) {
+  const maxRetries = 3;
+  let lastError;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`🔍 Fetching credits for person ${personId}, attempt ${attempt}`);
+      
+      const url = `${TMDB_BASE}/person/${personId}/movie_credits?api_key=${apiKey}`;
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('Person not found');
+        }
+        if (response.status === 401) {
+          throw new Error('Invalid TMDb API key');
+        }
+        throw new Error(`TMDb API error: ${response.status}`);
+      }
+      
+      const credits = await response.json();
+      console.log('🔍 Credits fetched successfully:', {
+        cast: credits.cast?.length || 0,
+        crew: credits.crew?.length || 0
+      });
+      
+      return credits;
+      
+    } catch (error) {
+      lastError = error;
+      console.error(`🔍 Attempt ${attempt} failed:`, error.message);
+      
+      if (attempt < maxRetries) {
+        // Exponential backoff
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+      }
+    }
+  }
+  
+  throw lastError;
+}
+
+// Fetch movie details with full validation
 async function fetchMovieDetails(movieIds, apiKey) {
+  console.log(`🔍 Fetching details for ${movieIds.length} movies`);
+  
   const movieDetails = [];
   const batchSize = 10;
   
@@ -23,12 +122,25 @@ async function fetchMovieDetails(movieIds, apiKey) {
       try {
         const url = `${TMDB_BASE}/movie/${tmdbId}?api_key=${apiKey}`;
         const res = await fetch(url);
-        if (!res.ok) return null;
+        
+        if (!res.ok) {
+          console.warn(`🔍 Failed to fetch movie ${tmdbId}: ${res.status}`);
+          return null;
+        }
         
         const movie = await res.json();
         
+        // Validate movie data
+        if (!movie || !movie.title) {
+          console.warn(`🔍 Invalid movie data for ${tmdbId}:`, movie);
+          return null;
+        }
+        
         // Only include movies with IMDB IDs for RSS compatibility
-        if (!movie.imdb_id) return null;
+        if (!movie.imdb_id) {
+          console.log(`🔍 Movie ${movie.title} has no IMDB ID, skipping`);
+          return null;
+        }
         
         return {
           id: tmdbId,
@@ -37,13 +149,14 @@ async function fetchMovieDetails(movieIds, apiKey) {
           year: movie.release_date ? new Date(movie.release_date).getFullYear() : null,
           poster_path: movie.poster_path,
           overview: movie.overview,
-          vote_average: movie.vote_average,
+          vote_average: movie.vote_average || 0,
           release_date: movie.release_date,
           runtime: movie.runtime,
-          genres: movie.genres?.slice(0, 3).map(g => g.name) || []
+          genres: Array.isArray(movie.genres) ? movie.genres.slice(0, 3).map(g => g.name) : []
         };
+        
       } catch (error) {
-        console.warn(`Error fetching TMDb ID ${tmdbId}:`, error.message);
+        console.warn(`🔍 Error fetching movie ${tmdbId}:`, error.message);
         return null;
       }
     });
@@ -51,11 +164,13 @@ async function fetchMovieDetails(movieIds, apiKey) {
     const batchResults = await Promise.all(promises);
     movieDetails.push(...batchResults.filter(movie => movie !== null));
     
-    // Small delay between batches
+    // Small delay between batches to avoid rate limiting
     if (i + batchSize < movieIds.length) {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
   }
+  
+  console.log(`🔍 Successfully fetched ${movieDetails.length} movie details`);
   
   // Sort by release date (newest first)
   return movieDetails.sort((a, b) => {
@@ -67,10 +182,14 @@ async function fetchMovieDetails(movieIds, apiKey) {
 
 export async function POST(request) {
   try {
+    console.log('🔍 Filmography API called');
+    
     const url = new URL(request.url);
     const sig = url.searchParams.get('sig') || '';
     
     const { userId, personId, roleType = 'actor' } = await request.json();
+    
+    console.log('🔍 Request params:', { userId: !!userId, personId, roleType });
     
     if (!userId || !personId) {
       return Response.json({ error: 'Missing parameters' }, { status: 400 });
@@ -84,6 +203,7 @@ export async function POST(request) {
 
     const tenant = await loadTenant(userId);
     if (!tenant) {
+      console.error('🔍 Tenant not found for userId:', userId);
       return Response.json({ error: 'User not found' }, { status: 404 });
     }
 
@@ -92,6 +212,7 @@ export async function POST(request) {
     const isValidSig = verify(expectedSigData, tenant.tenantSecret, sig);
     
     if (!isValidSig) {
+      console.error('🔍 Invalid signature');
       return Response.json({ error: 'Invalid signature' }, { status: 403 });
     }
 
@@ -100,6 +221,7 @@ export async function POST(request) {
     const cached = filmographyCache.get(cacheKey);
     
     if (cached && Date.now() - cached.timestamp < 3600000) { // 1 hour
+      console.log('🔍 Returning cached filmography');
       return Response.json({ 
         movies: cached.movies,
         personName: cached.personName,
@@ -108,19 +230,27 @@ export async function POST(request) {
     }
 
     // Fetch person details and credits
+    console.log('🔍 Fetching person details and credits');
+    
     const [personResponse, credits] = await Promise.all([
       fetch(`${TMDB_BASE}/person/${personId}?api_key=${tenant.tmdbKey}`),
       fetchCredits(personId, tenant.tmdbKey)
     ]);
     
     if (!personResponse.ok) {
-      throw new Error(`Person not found: ${personResponse.status}`);
+      if (personResponse.status === 404) {
+        return Response.json({ error: 'Person not found' }, { status: 404 });
+      }
+      throw new Error(`Person API error: ${personResponse.status}`);
     }
     
     const person = await personResponse.json();
+    console.log('🔍 Person details fetched:', person.name);
+    
     const movieIds = extractMovieIds(credits, roleType);
     
     if (movieIds.length === 0) {
+      console.log('🔍 No movie IDs found for role:', roleType);
       return Response.json({ 
         movies: [], 
         personName: person.name,
@@ -138,6 +268,8 @@ export async function POST(request) {
       timestamp: Date.now()
     });
 
+    console.log(`🔍 Filmography complete: ${movies.length} movies returned`);
+
     return Response.json({ 
       movies, 
       personName: person.name,
@@ -146,8 +278,12 @@ export async function POST(request) {
     });
     
   } catch (error) {
-    console.error('Get Filmography Error:', error);
-    return Response.json({ error: 'Failed to fetch filmography' }, { status: 500 });
+    console.error('🔍 Filmography API Error:', error);
+    return Response.json({ 
+      error: error.message.includes('Person not found') ? error.message :
+             error.message.includes('Invalid TMDb') ? error.message : 
+             'Failed to fetch filmography' 
+    }, { status: 500 });
   }
 }
 
