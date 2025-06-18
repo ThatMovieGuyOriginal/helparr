@@ -1,4 +1,5 @@
 // utils/tmdb.js
+
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 
 export async function searchPeople(query, apiKey) {
