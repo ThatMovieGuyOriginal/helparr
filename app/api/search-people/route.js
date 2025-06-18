@@ -10,8 +10,8 @@ const rateLimitStore = new Map();
 
 function checkRateLimit(userId) {
   const now = Date.now();
-  const windowMs = 60 * 1000; // 1 minute
-  const maxRequests = 20; // Higher limit for search
+  const windowMs = 60 * 1000;
+  const maxRequests = 20;
   
   const key = `search_rate_limit:${userId}`;
   const userRequests = rateLimitStore.get(key) || [];
@@ -27,20 +27,14 @@ function checkRateLimit(userId) {
   return true;
 }
 
-// Helper function to safely process known_for array
-function safeProcessKnownFor(knownForArray) {
-  if (!Array.isArray(knownForArray)) {
-    return '';
-  }
+// FIXED: Always process to string at API level - no utility needed
+function processKnownFor(knownForArray) {
+  if (!Array.isArray(knownForArray)) return '';
   
   return knownForArray
     .slice(0, 3)
-    .map(item => {
-      // Handle both movie and TV show objects
-      if (!item) return null;
-      return item.title || item.name || null;
-    })
-    .filter(Boolean) // Remove null/undefined values
+    .map(item => item?.title || item?.name)
+    .filter(Boolean)
     .join(', ');
 }
 
@@ -55,7 +49,6 @@ export async function POST(request) {
       return Response.json({ error: 'Query must be at least 2 characters' }, { status: 400 });
     }
 
-    // Rate limiting
     if (!checkRateLimit(userId)) {
       return Response.json({ error: 'Too many requests. Please wait.' }, { status: 429 });
     }
@@ -65,7 +58,6 @@ export async function POST(request) {
       return Response.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Verify signature
     const expectedSigData = `search-people:${userId}`;
     const isValidSig = verify(expectedSigData, tenant.tenantSecret, sig);
     
@@ -73,7 +65,6 @@ export async function POST(request) {
       return Response.json({ error: 'Invalid signature' }, { status: 403 });
     }
 
-    // Search TMDb for people
     const searchUrl = `${TMDB_BASE}/search/person?api_key=${tenant.tmdbKey}&query=${encodeURIComponent(query)}&page=1`;
     const response = await fetch(searchUrl);
     
@@ -86,13 +77,13 @@ export async function POST(request) {
     
     const data = await response.json();
     
-    // Format results for frontend with safe processing
+    // FIXED: Always return consistent data types - process ONCE here
     const people = data.results.slice(0, 10).map(person => ({
       id: person.id,
       name: person.name || 'Unknown',
       profile_path: person.profile_path,
       known_for_department: person.known_for_department || 'Acting',
-      known_for: safeProcessKnownFor(person.known_for)
+      known_for: processKnownFor(person.known_for) // ALWAYS string now
     }));
 
     return Response.json({ people });
