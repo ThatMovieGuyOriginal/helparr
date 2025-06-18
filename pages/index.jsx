@@ -1,6 +1,7 @@
-// pages/index.jsx - refactor
-import ModernHomepage from '../components/ModernHomepage';
+// pages/index.jsx
+
+import Homepage from '../components/Homepage';
 
 export default function Home() {
-  return <ModernHomepage />;
+  return <Homepage />;
 }
