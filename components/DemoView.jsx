@@ -11,6 +11,8 @@ export default function DemoView({ onGetStarted }) {
   const [filmographyLoading, setFilmographyLoading] = useState(false);
   const [error, setError] = useState('');
   const [demoMessage, setDemoMessage] = useState('');
+  const [searchesRemaining, setSearchesRemaining] = useState(null);
+  const [viewsRemaining, setViewsRemaining] = useState(null);
 
   // Auto-search with debouncing
   useEffect(() => {
@@ -43,24 +45,21 @@ export default function DemoView({ onGetStarted }) {
       
       if (response.ok) {
         setSearchResults(data.people || []);
+        setSearchesRemaining(data.remaining);
         setDemoMessage(data.message || '');
-        
-        if (data.error) {
-          setError(data.error);
-        }
         
         trackEvent('demo_search_results', { 
           query: searchQuery.toLowerCase(),
           resultCount: data.people?.length || 0,
+          totalResults: data.totalResults || 0,
           demo: true
         });
       } else {
         setError(data.error || 'Search failed');
         setSearchResults([]);
         
-        // Show suggestions if available
-        if (data.suggestions) {
-          setDemoMessage(`Try searching for: ${data.suggestions.join(', ')}`);
+        if (data.rateLimited) {
+          setDemoMessage('You\'ve hit the demo limit! Sign up for unlimited searches.');
         }
       }
     } catch (err) {
@@ -96,17 +95,23 @@ export default function DemoView({ onGetStarted }) {
       
       if (response.ok) {
         setFilmography(data.movies || []);
+        setViewsRemaining(data.remaining);
         setDemoMessage(data.message || '');
         
         trackEvent('demo_filmography_loaded', {
           personName: person.name,
           roleType,
           movieCount: data.movies?.length || 0,
+          totalFound: data.totalFound || 0,
           demo: true
         });
       } else {
         setError(data.error || 'Failed to load filmography');
         setFilmography([]);
+        
+        if (data.rateLimited) {
+          setDemoMessage('Demo limit reached! Sign up for unlimited access.');
+        }
       }
     } catch (err) {
       setError('Failed to load demo filmography');
@@ -127,15 +132,32 @@ export default function DemoView({ onGetStarted }) {
     <div>
       {/* Demo Banner */}
       <div className="bg-gradient-to-r from-purple-600/20 to-blue-600/20 border border-purple-500/30 rounded-xl p-4 mb-6">
-        <div className="flex items-center space-x-2 mb-2">
-          <span className="text-2xl">🎬</span>
-          <h2 className="text-xl font-bold text-white">Try Helparr Demo</h2>
-          <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-full">LIVE DATA</span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <span className="text-2xl">🎬</span>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h2 className="text-xl font-bold text-white">Try Helparr Demo</h2>
+                <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-full">LIVE DATA</span>
+              </div>
+              <p className="text-purple-200 text-sm">
+                Search for any actor or director to see real movie data!
+              </p>
+            </div>
+          </div>
+          
+          {/* Usage Counter */}
+          <div className="text-right">
+            {searchesRemaining !== null && (
+              <div className="text-sm text-purple-200">
+                <div className="font-medium">{searchesRemaining}/8 searches left</div>
+                {viewsRemaining !== null && (
+                  <div className="text-xs text-purple-300">{viewsRemaining}/12 views left</div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-        <p className="text-purple-200 text-sm">
-          Search for popular actors and directors to see real movie data! 
-          Limited to prevent abuse - sign up for unlimited access.
-        </p>
       </div>
 
       {/* Demo Messages */}
@@ -160,7 +182,7 @@ export default function DemoView({ onGetStarted }) {
           <div className="relative">
             <input
               type="text"
-              placeholder="Try searching: Tom Hanks, Christopher Nolan, Margot Robbie..."
+              placeholder="Search for any actor, director, or producer..."
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -174,8 +196,8 @@ export default function DemoView({ onGetStarted }) {
           </div>
 
           <div className="flex flex-wrap gap-2 mt-4">
-            <span className="text-sm text-slate-400">Popular searches:</span>
-            {['Tom Hanks', 'Christopher Nolan', 'Margot Robbie', 'Leonardo DiCaprio'].map(name => (
+            <span className="text-sm text-slate-400">Try searching:</span>
+            {['Ryan Gosling', 'Greta Gerwig', 'Anya Taylor-Joy', 'Denis Villeneuve'].map(name => (
               <button
                 key={name}
                 onClick={() => setSearchQuery(name)}
@@ -249,7 +271,7 @@ export default function DemoView({ onGetStarted }) {
           {filmographyLoading ? (
             <div className="text-center py-8">
               <div className="animate-spin w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-              <p className="text-slate-400">Loading demo filmography...</p>
+              <p className="text-slate-400">Loading filmography...</p>
             </div>
           ) : filmography.length > 0 ? (
             <div>
@@ -309,9 +331,14 @@ export default function DemoView({ onGetStarted }) {
               </div>
             </div>
           ) : (
-            <p className="text-slate-400 text-center py-8">
-              No {selectedPerson.roleType} credits found in demo.
-            </p>
+            <div className="text-center py-8">
+              <p className="text-slate-400 mb-4">
+                No {selectedPerson.roleType} credits found for {selectedPerson.name}.
+              </p>
+              <p className="text-slate-300 text-sm">
+                They might have credits in other roles. Sign up to explore their complete filmography!
+              </p>
+            </div>
           )}
         </div>
       )}
@@ -324,9 +351,9 @@ export default function DemoView({ onGetStarted }) {
           <p className="text-sm text-slate-400">Just need a free TMDb API key</p>
         </div>
         <div className="bg-slate-800/50 p-4 rounded-lg">
-          <div className="text-2xl mb-2">🎬</div>
-          <h3 className="font-semibold mb-1">Unlimited Access</h3>
-          <p className="text-sm text-slate-400">Search any actor, director, or collection</p>
+          <div className="text-2xl mb-2">🔍</div>
+          <h3 className="font-semibold mb-1">Search Anyone</h3>
+          <p className="text-sm text-slate-400">Any actor, director, or producer worldwide</p>
         </div>
         <div className="bg-slate-800/50 p-4 rounded-lg">
           <div className="text-2xl mb-2">📡</div>
@@ -347,7 +374,7 @@ export default function DemoView({ onGetStarted }) {
       </button>
       
       <p className="text-center text-sm text-slate-500 mt-4">
-        No demo limits • Search anyone • 100% free • No credit card
+        No search restrictions • Complete filmographies • 100% free • No credit card
       </p>
     </div>
   );
