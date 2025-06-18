@@ -1,4 +1,5 @@
 // utils/analytics.js
+import { sign } from './hmac';
 
 export async function trackEvent(eventType, data = {}) {
   const meaningfulEvents = [
@@ -6,6 +7,10 @@ export async function trackEvent(eventType, data = {}) {
     'demo_interaction', 
     'setup_started',
     'setup_completed',
+    'search_people',
+    'search_results',
+    'get_filmography',
+    'filmography_loaded',
     'first_search',
     'movies_selected',
     'rss_generated',
@@ -28,6 +33,10 @@ export async function trackEvent(eventType, data = {}) {
   } catch {
     // Silent fail
   }
+}
+
+export async function generateSignature(data, secret) {
+  return sign(data, secret);
 }
 
 function getSessionId() {
