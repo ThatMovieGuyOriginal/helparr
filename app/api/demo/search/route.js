@@ -1,26 +1,16 @@
 // app/api/demo/search/route.js
-
-// Demo search endpoint with real TMDB data and strict limitations
+// Demo search endpoint - ANY search allowed, limited by quantity and frequency
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 
-// Demo rate limiting - much stricter than regular search
+// Demo rate limiting - reasonable but prevents abuse
 const demoRateLimitStore = new Map();
-const DEMO_RATE_LIMIT = 10; // Only 10 demo searches per IP per hour
+const DEMO_RATE_LIMIT = 8; // 8 searches per hour per IP
 const DEMO_WINDOW = 60 * 60 * 1000; // 1 hour
 
-// Curated list of popular actors/directors for demo
-const DEMO_ALLOWED_SEARCHES = [
-  'tom hanks', 'leonardo dicaprio', 'margot robbie', 'ryan gosling',
-  'christopher nolan', 'quentin tarantino', 'martin scorsese',
-  'scarlett johansson', 'robert downey jr', 'emma stone',
-  'brad pitt', 'angelina jolie', 'will smith', 'denzel washington',
-  'meryl streep', 'jennifer lawrence', 'christian bale', 'natalie portman'
-];
-
-// Simple in-memory cache for demo results (resets on server restart)
+// Cache for demo results
 const demoCache = new Map();
-const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+const CACHE_DURATION = 72 * 60 * 60 * 1000; // 24 hours
 
 function getClientIP(request) {
   const forwarded = request.headers.get('x-forwarded-for');
@@ -41,18 +31,26 @@ function checkDemoRateLimit(clientIP) {
   const recentRequests = requests.filter(timestamp => now - timestamp < DEMO_WINDOW);
   
   if (recentRequests.length >= DEMO_RATE_LIMIT) {
-    return false;
+    return {
+      allowed: false,
+      remaining: 0,
+      resetTime: Math.min(...recentRequests) + DEMO_WINDOW
+    };
   }
   
   recentRequests.push(now);
   demoRateLimitStore.set(key, recentRequests);
   
   // Cleanup old entries periodically
-  if (Math.random() < 0.01) {
+  if (Math.random() < 0.05) {
     cleanupDemoRateLimit();
   }
   
-  return true;
+  return {
+    allowed: true,
+    remaining: DEMO_RATE_LIMIT - recentRequests.length,
+    resetTime: null
+  };
 }
 
 function cleanupDemoRateLimit() {
@@ -73,7 +71,7 @@ function safeProcessKnownFor(knownForArray) {
   }
   
   return knownForArray
-    .slice(0, 3)
+    .slice(0, 2) // Limit for demo
     .map(item => {
       if (!item) return null;
       return item.title || item.name || null;
@@ -90,35 +88,25 @@ export async function POST(request) {
     // Validate input
     if (!query || query.trim().length < 2) {
       return Response.json({ 
-        error: 'Query must be at least 2 characters',
+        error: 'Search must be at least 2 characters',
         demo: true 
       }, { status: 400 });
     }
 
-    // Check if query is in allowed list (case insensitive)
-    const normalizedQuery = query.toLowerCase().trim();
-    const isAllowed = DEMO_ALLOWED_SEARCHES.some(allowed => 
-      normalizedQuery.includes(allowed) || allowed.includes(normalizedQuery)
-    );
-
-    if (!isAllowed) {
+    // Rate limiting check
+    const rateLimit = checkDemoRateLimit(clientIP);
+    if (!rateLimit.allowed) {
+      const resetMinutes = Math.ceil((rateLimit.resetTime - Date.now()) / (1000 * 60));
       return Response.json({ 
-        error: 'Demo searches are limited to popular actors and directors. Try searching for Tom Hanks, Christopher Nolan, or Margot Robbie.',
-        suggestions: ['Tom Hanks', 'Christopher Nolan', 'Margot Robbie', 'Leonardo DiCaprio'],
-        demo: true 
-      }, { status: 400 });
-    }
-
-    // Rate limiting for demo
-    if (!checkDemoRateLimit(clientIP)) {
-      return Response.json({ 
-        error: 'Demo rate limit exceeded. Please try again later or sign up to use your own API key.',
-        demo: true 
+        error: `Demo limit reached. Try again in ${resetMinutes} minutes or sign up for unlimited searches.`,
+        demo: true,
+        rateLimited: true,
+        resetMinutes
       }, { status: 429 });
     }
 
     // Check cache first
-    const cacheKey = `demo_search:${normalizedQuery}`;
+    const cacheKey = `demo_search:${query.toLowerCase().trim()}`;
     const cached = demoCache.get(cacheKey);
     
     if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
@@ -126,7 +114,8 @@ export async function POST(request) {
         people: cached.data,
         demo: true,
         cached: true,
-        message: 'This is demo data. Sign up to search for any actor or director!'
+        remaining: rateLimit.remaining,
+        message: `Demo showing limited results. ${rateLimit.remaining} searches remaining - sign up for unlimited access!`
       });
     }
 
@@ -139,7 +128,7 @@ export async function POST(request) {
       }, { status: 503 });
     }
 
-    // Search TMDb
+    // Search TMDb - NO RESTRICTIONS on what can be searched
     const searchUrl = `${TMDB_BASE}/search/person?api_key=${demoApiKey}&query=${encodeURIComponent(query)}&page=1`;
     const response = await fetch(searchUrl);
     
@@ -149,8 +138,8 @@ export async function POST(request) {
     
     const data = await response.json();
     
-    // Format results - limit to top 3 for demo
-    const people = data.results.slice(0, 3).map(person => ({
+    // Format results - limit quantity for demo, not content
+    const people = data.results.slice(0, 8).map(person => ({ // Max 8 results in demo
       id: person.id,
       name: person.name || 'Unknown',
       profile_path: person.profile_path,
@@ -165,24 +154,36 @@ export async function POST(request) {
     });
 
     // Log demo usage for monitoring
-    console.log(`Demo search: "${query}" from ${clientIP.substring(0, 8)}*** returned ${people.length} results`);
+    console.log(`Demo search: "${query}" from ${clientIP.substring(0, 8)}*** returned ${people.length}/${data.results.length} results`);
+
+    // Provide helpful response based on results
+    let message = '';
+    if (people.length === 0) {
+      message = 'No results found. Try a different search or sign up to see if there are more results in the full database.';
+    } else if (data.results.length > people.length) {
+      message = `Demo showing ${people.length} of ${data.results.length} results. ${rateLimit.remaining} searches remaining - sign up to see all results!`;
+    } else {
+      message = `Demo results shown. ${rateLimit.remaining} searches remaining - sign up for unlimited access!`;
+    }
 
     return Response.json({ 
       people,
       demo: true,
-      message: 'This is demo data. Sign up to search for any actor or director and see their complete filmography!',
+      remaining: rateLimit.remaining,
+      totalResults: data.results.length,
+      showingResults: people.length,
+      message,
       limitations: [
-        'Limited to popular actors and directors',
-        'Maximum 3 results shown',
-        '10 searches per hour per IP',
-        'Sign up for unlimited access'
+        `Showing max ${people.length} results per search`,
+        `${rateLimit.remaining} searches remaining this hour`,
+        'Sign up for unlimited searches and full results'
       ]
     });
     
   } catch (error) {
     console.error('Demo Search Error:', error);
     return Response.json({ 
-      error: 'Demo search failed. Please try again or sign up for full access.',
+      error: 'Search failed. This might work in the full version - sign up to try with your own API key.',
       demo: true 
     }, { status: 500 });
   }
