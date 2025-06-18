@@ -1,4 +1,4 @@
-// components/views/SearchView.jsx - SIMPLIFIED (NO UTILITY NEEDED)
+// components/views/SearchView.jsx
 import { useState } from 'react';
 import { useUserManagement } from '../../hooks/useUserManagement';
 import { useCollectionSearch } from '../../hooks/useCollectionSearch';
