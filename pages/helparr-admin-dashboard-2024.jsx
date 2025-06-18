@@ -1,6 +1,7 @@
 // pages/helparr-admin-dashboard-2024.jsx
-import ModernHomepage from '../components/ModernHomepage';
+
+import Homepage from '../components/Homepage';
 
 export default function AdminDashboard() {
-  return <ModernHomepage />;
+  return <Homepage />;
 }
