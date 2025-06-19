@@ -2,7 +2,7 @@
 
 import { verify } from '../../../../utils/hmac';
 import { rssManager } from '../../../../lib/RSSManager';
-import { loadTenant } from '../../../../lib/kv';
+import { loadTenant, saveTenant } from '../../../../lib/kv';
 
 // Basic rate limiting to prevent abuse
 const rateLimitStore = new Map();
@@ -89,6 +89,10 @@ export async function GET(request, { params }) {
       return createErrorResponse('Invalid signature', 403);
     }
 
+    // Track RSS access for analytics and countdown
+    const accessTime = new Date().toISOString();
+    await trackRSSAccess(userId, tenant, isRadarr, clientIP, accessTime);
+
     // Generate RSS feed using simplified but robust manager
     console.log(`Generating RSS feed for ${userId} (${isRadarr ? 'Radarr' : 'Browser'})`);
     
@@ -111,7 +115,8 @@ export async function GET(request, { params }) {
         'X-RSS-Generator': 'Helparr v2.0',
         'X-Movie-Count': movieCount.toString(),
         'X-Response-Time': `${responseTime}ms`,
-        'X-Client-Type': isRadarr ? 'radarr' : 'browser'
+        'X-Client-Type': isRadarr ? 'radarr' : 'browser',
+        'X-Access-Time': accessTime
       }
     });
 
@@ -121,6 +126,43 @@ export async function GET(request, { params }) {
 
     // Return error response that won't break Radarr
     return createErrorResponse(error.message, 500);
+  }
+}
+
+// Track RSS access for analytics and Radarr countdown
+async function trackRSSAccess(userId, tenant, isRadarr, clientIP, accessTime) {
+  try {
+    // Update tenant with latest access information
+    const updatedTenant = {
+      ...tenant,
+      lastRSSAccess: accessTime,
+      lastRSSClient: isRadarr ? 'radarr' : 'browser',
+      lastRSSIP: clientIP.substring(0, 8) + '***', // Privacy
+      totalRSSAccesses: (tenant.totalRSSAccesses || 0) + 1,
+      // Track recent accesses for pattern analysis
+      recentRSSAccesses: [
+        {
+          time: accessTime,
+          client: isRadarr ? 'radarr' : 'browser',
+          ip: clientIP.substring(0, 8) + '***'
+        },
+        ...(tenant.recentRSSAccesses || []).slice(0, 9) // Keep last 10
+      ]
+    };
+
+    // Save updated tenant data
+    await saveTenant(userId, updatedTenant);
+
+    // For browser clients, update localStorage for countdown
+    if (!isRadarr) {
+      // This won't work directly, but we can pass it to the client via headers
+      // Client will need to handle storing this for countdown calculation
+    }
+
+    console.log(`RSS access tracked for ${userId}: ${isRadarr ? 'Radarr' : 'Browser'} at ${accessTime}`);
+  } catch (error) {
+    console.warn(`Failed to track RSS access for ${userId}:`, error.message);
+    // Don't fail the RSS request if tracking fails
   }
 }
 
