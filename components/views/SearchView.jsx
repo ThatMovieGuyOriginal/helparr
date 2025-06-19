@@ -13,7 +13,10 @@ export default function SearchView({
   setSuccess,
   handleNavigation,
   userId,
-  tenantSecret
+  tenantSecret,
+  rssUrl,
+  setRssUrl,
+  onMovieCountChange
 }) {
   const userManagement = useUserManagement();
   
@@ -61,7 +64,12 @@ export default function SearchView({
       setSuccess,
       setError,
       () => handleNavigation('manage'), // Navigate to manage view after adding
-      clearFilmography
+      clearFilmography,
+      // Auto-sync parameters
+      userId,
+      tenantSecret,
+      setRssUrl,
+      onMovieCountChange
     );
   };
 
@@ -82,6 +90,16 @@ export default function SearchView({
           {searchLoading && (
             <div className="absolute right-3 top-3 animate-spin w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full"></div>
           )}
+        </div>
+
+        {/* Auto-sync Information */}
+        <div className="mt-4 p-3 bg-blue-600/10 border border-blue-500/30 rounded-lg">
+          <div className="flex items-center space-x-2">
+            <span className="text-blue-300 text-sm">⚡</span>
+            <span className="text-blue-200 text-sm">
+              <strong>Auto-sync enabled:</strong> Movies you add will automatically sync to your RSS feed after 5 seconds.
+            </span>
+          </div>
         </div>
 
         {/* Search Results */}
@@ -153,14 +171,26 @@ export default function SearchView({
               <p className="text-slate-400">Loading filmography...</p>
             </div>
           ) : filmographyData.length > 0 ? (
-            <SearchFilmographySelector
-              movies={selectedMoviesInSearch}
-              onToggleMovie={toggleMovieInSearch}
-              onSelectAll={selectAllInSearch}
-              onSave={handleAddPersonToList}
-              personName={selectedPerson.name}
-              role={roleType}
-            />
+            <>
+              {/* Auto-sync reminder */}
+              <div className="mb-4 p-3 bg-green-600/10 border border-green-500/30 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <span className="text-green-300 text-sm">✅</span>
+                  <span className="text-green-200 text-sm">
+                    Movies will auto-sync to your RSS feed after you add them. No manual sync needed!
+                  </span>
+                </div>
+              </div>
+              
+              <SearchFilmographySelector
+                movies={selectedMoviesInSearch}
+                onToggleMovie={toggleMovieInSearch}
+                onSelectAll={selectAllInSearch}
+                onSave={handleAddPersonToList}
+                personName={selectedPerson.name}
+                role={roleType}
+              />
+            </>
           ) : (
             <p className="text-slate-400 text-center py-8">No {roleType} credits found.</p>
           )}
