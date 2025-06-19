@@ -1,6 +1,5 @@
 // components/filmography/SearchFilmographySelector.jsx
-import { useState, useEffect } from 'react';
-import MovieSorter from '../collections/MovieSorter';
+import { useState } from 'react';
 
 export default function SearchFilmographySelector({ 
   movies, 
@@ -10,16 +9,10 @@ export default function SearchFilmographySelector({
   personName, 
   role 
 }) {
-  const [sortedMovies, setSortedMovies] = useState(movies);
   const [searchFilter, setSearchFilter] = useState('');
 
-  // Update sorted movies when movies prop changes
-  useEffect(() => {
-    setSortedMovies(movies);
-  }, [movies]);
-
-  // Filter movies based on search
-  const filteredMovies = sortedMovies.filter(movie =>
+  // Simple filter - no complex sorting needed for core functionality
+  const filteredMovies = movies.filter(movie =>
     movie.title.toLowerCase().includes(searchFilter.toLowerCase())
   );
 
@@ -39,50 +32,39 @@ export default function SearchFilmographySelector({
 
   return (
     <div>
-      {/* Search and Stats Header */}
+      {/* Simple search filter */}
       <div className="flex items-center justify-between mb-4">
-        <div className="flex-1 mr-4">
-          <input
-            type="text"
-            placeholder="Filter movies..."
-            value={searchFilter}
-            onChange={(e) => setSearchFilter(e.target.value)}
-            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white placeholder-slate-400 text-sm focus:ring-2 focus:ring-purple-500"
-          />
-        </div>
+        <input
+          type="text"
+          placeholder="Filter movies..."
+          value={searchFilter}
+          onChange={(e) => setSearchFilter(e.target.value)}
+          className="flex-1 mr-4 px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white placeholder-slate-400 text-sm focus:ring-2 focus:ring-purple-500"
+        />
         <div className="text-sm text-slate-300">
           {selectedCount} of {filteredMovies.length} selected
         </div>
       </div>
 
-      {/* Selection Controls */}
-      <div className="flex justify-between items-center mb-4">
-        <div className="flex space-x-2">
-          <button
-            onClick={() => handleSelectAll(true)}
-            className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded transition-colors"
-          >
-            Select All Visible
-          </button>
-          <button
-            onClick={() => handleSelectAll(false)}
-            className="px-3 py-1 bg-slate-600 hover:bg-slate-700 text-white text-sm rounded transition-colors"
-          >
-            Select None
-          </button>
-        </div>
+      {/* Selection controls */}
+      <div className="flex space-x-2 mb-4">
+        <button
+          onClick={() => handleSelectAll(true)}
+          className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded transition-colors"
+        >
+          Select All
+        </button>
+        <button
+          onClick={() => handleSelectAll(false)}
+          className="px-3 py-1 bg-slate-600 hover:bg-slate-700 text-white text-sm rounded transition-colors"
+        >
+          Select None
+        </button>
       </div>
 
-      {/* Movie Sorter */}
-      <MovieSorter 
-        movies={filteredMovies}
-        onSortedMovies={setSortedMovies}
-        searchContext={`${personName} (${role})`}
-      />
-
-      {/* Movies List */}
-      <div className="max-h-96 overflow-y-auto space-y-3 mb-6 scrollbar-thin">
-        {sortedMovies.map(movie => (
+      {/* Movies list - simple, no sorting */}
+      <div className="max-h-96 overflow-y-auto space-y-3 mb-6">
+        {filteredMovies.map(movie => (
           <div
             key={movie.id}
             className={`flex items-start space-x-4 p-4 rounded-lg border cursor-pointer transition-all duration-200 ${
@@ -126,28 +108,10 @@ export default function SearchFilmographySelector({
               )}
               <div className="flex items-center space-x-4 text-xs text-slate-500">
                 {movie.vote_average > 0 && (
-                  <span className="flex items-center space-x-1">
-                    <span>⭐</span>
-                    <span>{movie.vote_average.toFixed(1)}/10</span>
-                  </span>
+                  <span>⭐ {movie.vote_average.toFixed(1)}/10</span>
                 )}
                 {movie.release_date && (
-                  <span className="flex items-center space-x-1">
-                    <span>📅</span>
-                    <span>{new Date(movie.release_date).toLocaleDateString()}</span>
-                  </span>
-                )}
-                {movie.character && (
-                  <span className="flex items-center space-x-1">
-                    <span>🎭</span>
-                    <span>{movie.character}</span>
-                  </span>
-                )}
-                {movie.job && movie.job !== role && (
-                  <span className="flex items-center space-x-1">
-                    <span>💼</span>
-                    <span>{movie.job}</span>
-                  </span>
+                  <span>📅 {new Date(movie.release_date).toLocaleDateString()}</span>
                 )}
               </div>
             </div>
@@ -155,8 +119,8 @@ export default function SearchFilmographySelector({
         ))}
       </div>
 
-      {/* Save Button */}
-      <div className="flex justify-end space-x-3">
+      {/* Save button */}
+      <div className="flex justify-end">
         <button
           onClick={handleSave}
           disabled={!canSave}
