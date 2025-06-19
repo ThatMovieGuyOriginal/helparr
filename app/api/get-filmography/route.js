@@ -11,7 +11,7 @@ function getCacheKey(personId, roleType) {
   return `${personId}-${roleType}`;
 }
 
-// Extract movie IDs with full error handling
+// Extract movie IDs with full error handling - REMOVED arbitrary limits
 function extractMovieIds(credits, roleType) {
   try {
     if (!credits || typeof credits !== 'object') {
@@ -52,10 +52,11 @@ function extractMovieIds(credits, roleType) {
     
     console.log(`🔍 Extracted ${movies.length} ${roleType} credits`);
     
+    // Get ALL movies, not just recent ones - sort by release date for better UX
     return movies
       .filter(movie => movie && movie.release_date && movie.id)
       .sort((a, b) => new Date(b.release_date) - new Date(a.release_date))
-      .slice(0, 50) // Limit to 50 movies
+      // REMOVED: .slice(0, 50) - get complete filmography
       .map(movie => movie.id);
       
   } catch (error) {
@@ -108,15 +109,19 @@ async function fetchCredits(personId, apiKey) {
   throw lastError;
 }
 
-// Fetch movie details with full validation
+// Fetch movie details - improved batch processing for large filmographies
 async function fetchMovieDetails(movieIds, apiKey) {
   console.log(`🔍 Fetching details for ${movieIds.length} movies`);
   
   const movieDetails = [];
-  const batchSize = 10;
+  const batchSize = 8; // Smaller batches for better reliability
+  const maxMovies = 200; // Reasonable limit to prevent overwhelming UI and API
   
-  for (let i = 0; i < movieIds.length; i += batchSize) {
-    const batch = movieIds.slice(i, i + batchSize);
+  // Process up to maxMovies, prioritizing recent films
+  const moviesToProcess = movieIds.slice(0, maxMovies);
+  
+  for (let i = 0; i < moviesToProcess.length; i += batchSize) {
+    const batch = moviesToProcess.slice(i, i + batchSize);
     
     const promises = batch.map(async (tmdbId) => {
       try {
@@ -165,14 +170,14 @@ async function fetchMovieDetails(movieIds, apiKey) {
     movieDetails.push(...batchResults.filter(movie => movie !== null));
     
     // Small delay between batches to avoid rate limiting
-    if (i + batchSize < movieIds.length) {
-      await new Promise(resolve => setTimeout(resolve, 100));
+    if (i + batchSize < moviesToProcess.length) {
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
   }
   
-  console.log(`🔍 Successfully fetched ${movieDetails.length} movie details`);
+  console.log(`🔍 Successfully fetched ${movieDetails.length} movie details from ${movieIds.length} total credits`);
   
-  // Sort by release date (newest first)
+  // Sort by release date (newest first) for better UX
   return movieDetails.sort((a, b) => {
     const dateA = new Date(a.release_date || '1900-01-01');
     const dateB = new Date(b.release_date || '1900-01-01');
@@ -268,13 +273,16 @@ export async function POST(request) {
       timestamp: Date.now()
     });
 
-    console.log(`🔍 Filmography complete: ${movies.length} movies returned`);
+    console.log(`🔍 Filmography complete: ${movies.length} movies returned from ${movieIds.length} total credits`);
 
     return Response.json({ 
       movies, 
       personName: person.name,
       totalFound: movieIds.length,
-      withImdbIds: movies.length
+      withImdbIds: movies.length,
+      message: movieIds.length > movies.length ? 
+        `Showing ${movies.length} of ${movieIds.length} total ${roleType} credits (movies with IMDB IDs)` : 
+        `Complete ${roleType} filmography: ${movies.length} movies`
     });
     
   } catch (error) {
