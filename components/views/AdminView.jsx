@@ -54,15 +54,23 @@ export function AdminView() {
     );
   }
 
-  const { funnel, dropoffAnalysis, usage, popularSearches, performance } = analytics;
+  // Defensive programming: provide defaults for all destructured properties
+  const {
+    funnel = {},
+    dropoffAnalysis = [],
+    usage = {},
+    popularSearches = [],
+    performance = {},
+    dateRange = { days: 0, start: 'N/A', end: 'N/A' }
+  } = analytics || {};
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-white mb-2">📊 Business Dashboard</h2>
         <p className="text-slate-400">
-          Conversion funnel analysis for {analytics.dateRange.days} days 
-          ({analytics.dateRange.start} to {analytics.dateRange.end})
+          Conversion funnel analysis for {dateRange.days} days 
+          ({dateRange.start} to {dateRange.end})
         </p>
       </div>
 
@@ -70,32 +78,38 @@ export function AdminView() {
       <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
         <h3 className="text-xl font-bold text-white mb-6">🎯 Conversion Funnel</h3>
         <div className="space-y-4">
-          {Object.entries(funnel).map(([stage, count], index) => {
-            const percentage = (count / funnel.pageViews) * 100;
-            const isDropoff = index > 0 && percentage < 50;
-            
-            return (
-              <div key={stage} className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-300 capitalize">
-                    {stage.replace(/([A-Z])/g, ' $1')}
-                  </span>
-                  <div className="text-right">
-                    <span className="text-white font-bold">{count.toLocaleString()}</span>
-                    <span className="text-slate-400 ml-2">({percentage.toFixed(1)}%)</span>
+          {Object.entries(funnel).length > 0 ? (
+            Object.entries(funnel).map(([stage, count], index) => {
+              const percentage = funnel.pageViews ? (count / funnel.pageViews) * 100 : 0;
+              const isDropoff = index > 0 && percentage < 50;
+              
+              return (
+                <div key={stage} className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-300 capitalize">
+                      {stage.replace(/([A-Z])/g, ' $1')}
+                    </span>
+                    <div className="text-right">
+                      <span className="text-white font-bold">{count.toLocaleString()}</span>
+                      <span className="text-slate-400 ml-2">({percentage.toFixed(1)}%)</span>
+                    </div>
+                  </div>
+                  <div className="w-full bg-slate-700 rounded-full h-3">
+                    <div 
+                      className={`h-3 rounded-full transition-all duration-500 ${
+                        isDropoff ? 'bg-red-500' : 'bg-purple-600'
+                      }`}
+                      style={{ width: `${Math.max(percentage, 0)}%` }}
+                    />
                   </div>
                 </div>
-                <div className="w-full bg-slate-700 rounded-full h-3">
-                  <div 
-                    className={`h-3 rounded-full transition-all duration-500 ${
-                      isDropoff ? 'bg-red-500' : 'bg-purple-600'
-                    }`}
-                    style={{ width: `${percentage}%` }}
-                  />
-                </div>
-              </div>
-            );
-          })}
+              );
+            })
+          ) : (
+            <div className="text-center py-8 text-slate-400">
+              No funnel data available
+            </div>
+          )}
         </div>
       </div>
 
@@ -103,29 +117,35 @@ export function AdminView() {
       <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
         <h3 className="text-xl font-bold text-white mb-6">⚠️ Drop-off Analysis</h3>
         <div className="space-y-3">
-          {dropoffAnalysis.map((item, index) => (
-            <div 
-              key={item.stage} 
-              className={`p-4 rounded-lg border ${
-                item.dropRate > 40 
-                  ? 'bg-red-900/20 border-red-500' 
-                  : 'bg-slate-700/30 border-slate-600'
-              }`}
-            >
-              <div className="flex justify-between items-center">
-                <span className="font-medium text-white">{item.stage}</span>
-                <div className="text-right">
-                  <span className="text-red-400 font-bold">{item.lost} users lost</span>
-                  <span className="text-slate-400 ml-2">({item.dropRate}% drop rate)</span>
+          {Array.isArray(dropoffAnalysis) && dropoffAnalysis.length > 0 ? (
+            dropoffAnalysis.map((item, index) => (
+              <div 
+                key={item.stage || index} 
+                className={`p-4 rounded-lg border ${
+                  item.dropRate > 40 
+                    ? 'bg-red-900/20 border-red-500' 
+                    : 'bg-slate-700/30 border-slate-600'
+                }`}
+              >
+                <div className="flex justify-between items-center">
+                  <span className="font-medium text-white">{item.stage || 'Unknown Stage'}</span>
+                  <div className="text-right">
+                    <span className="text-red-400 font-bold">{item.lost || 0} users lost</span>
+                    <span className="text-slate-400 ml-2">({item.dropRate || 0}% drop rate)</span>
+                  </div>
                 </div>
+                {item.dropRate > 40 && (
+                  <p className="text-red-300 text-sm mt-2">
+                    🚨 High drop-off rate - investigate user experience at this stage
+                  </p>
+                )}
               </div>
-              {item.dropRate > 40 && (
-                <p className="text-red-300 text-sm mt-2">
-                  🚨 High drop-off rate - investigate user experience at this stage
-                </p>
-              )}
+            ))
+          ) : (
+            <div className="text-center py-8 text-slate-400">
+              No drop-off analysis data available
             </div>
-          ))}
+          )}
         </div>
       </div>
 
@@ -134,28 +154,40 @@ export function AdminView() {
         <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
           <h3 className="text-lg font-bold text-white mb-4">📈 User Behavior</h3>
           <div className="space-y-3">
-            {Object.entries(usage).map(([metric, value]) => (
-              <div key={metric} className="flex justify-between">
-                <span className="text-slate-400 capitalize">
-                  {metric.replace(/([A-Z])/g, ' $1')}
-                </span>
-                <span className="text-white font-medium">{value}</span>
+            {Object.entries(usage).length > 0 ? (
+              Object.entries(usage).map(([metric, value]) => (
+                <div key={metric} className="flex justify-between">
+                  <span className="text-slate-400 capitalize">
+                    {metric.replace(/([A-Z])/g, ' $1')}
+                  </span>
+                  <span className="text-white font-medium">{value || 'N/A'}</span>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-4 text-slate-400">
+                No usage data available
               </div>
-            ))}
+            )}
           </div>
         </div>
 
         <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
           <h3 className="text-lg font-bold text-white mb-4">⚡ Performance</h3>
           <div className="space-y-3">
-            {Object.entries(performance).map(([metric, value]) => (
-              <div key={metric} className="flex justify-between">
-                <span className="text-slate-400 capitalize">
-                  {metric.replace(/([A-Z])/g, ' $1')}
-                </span>
-                <span className="text-white font-medium">{value}</span>
+            {Object.entries(performance).length > 0 ? (
+              Object.entries(performance).map(([metric, value]) => (
+                <div key={metric} className="flex justify-between">
+                  <span className="text-slate-400 capitalize">
+                    {metric.replace(/([A-Z])/g, ' $1')}
+                  </span>
+                  <span className="text-white font-medium">{value || 'N/A'}</span>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-4 text-slate-400">
+                No performance data available
               </div>
-            ))}
+            )}
           </div>
         </div>
       </div>
@@ -164,15 +196,21 @@ export function AdminView() {
       <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
         <h3 className="text-lg font-bold text-white mb-4">🔥 Popular Searches</h3>
         <div className="space-y-2">
-          {popularSearches.map((search, index) => (
-            <div key={search.query} className="flex justify-between items-center p-2 bg-slate-700/30 rounded">
-              <div className="flex items-center space-x-3">
-                <span className="text-slate-500 text-sm">#{index + 1}</span>
-                <span className="text-slate-300">{search.query}</span>
+          {Array.isArray(popularSearches) && popularSearches.length > 0 ? (
+            popularSearches.map((search, index) => (
+              <div key={search.query || index} className="flex justify-between items-center p-2 bg-slate-700/30 rounded">
+                <div className="flex items-center space-x-3">
+                  <span className="text-slate-500 text-sm">#{index + 1}</span>
+                  <span className="text-slate-300">{search.query || 'Unknown'}</span>
+                </div>
+                <span className="text-purple-400 font-medium">{search.count || 0} searches</span>
               </div>
-              <span className="text-purple-400 font-medium">{search.count} searches</span>
+            ))
+          ) : (
+            <div className="text-center py-8 text-slate-400">
+              No search data available
             </div>
-          ))}
+          )}
         </div>
       </div>
 
@@ -180,18 +218,31 @@ export function AdminView() {
       <div className="bg-blue-600/20 border border-blue-500 rounded-xl p-6">
         <h3 className="text-lg font-bold text-blue-200 mb-4">💡 Key Insights</h3>
         <div className="space-y-2 text-blue-100 text-sm">
-          <div>
-            <strong>Main Problem:</strong> {dropoffAnalysis.find(d => d.dropRate > 40)?.stage} 
-            has {dropoffAnalysis.find(d => d.dropRate > 40)?.dropRate}% drop rate
-          </div>
-          <div>
-            <strong>Conversion Rate:</strong> {((funnel.activeUsers / funnel.pageViews) * 100).toFixed(1)}% 
-            of visitors become active users
-          </div>
-          <div>
-            <strong>Top Opportunity:</strong> Improving post-setup onboarding could 
-            recover {dropoffAnalysis[2]?.lost} users
-          </div>
+          {Array.isArray(dropoffAnalysis) && dropoffAnalysis.length > 0 ? (
+            <>
+              <div>
+                <strong>Main Problem:</strong> {dropoffAnalysis.find(d => d.dropRate > 40)?.stage || 'No major issues detected'} 
+                {dropoffAnalysis.find(d => d.dropRate > 40) && (
+                  <span> has {dropoffAnalysis.find(d => d.dropRate > 40)?.dropRate}% drop rate</span>
+                )}
+              </div>
+              <div>
+                <strong>Conversion Rate:</strong> {
+                  funnel.pageViews && funnel.activeUsers 
+                    ? ((funnel.activeUsers / funnel.pageViews) * 100).toFixed(1)
+                    : '0'
+                }% of visitors become active users
+              </div>
+              <div>
+                <strong>Top Opportunity:</strong> Improving post-setup onboarding could 
+                recover {dropoffAnalysis[2]?.lost || 0} users
+              </div>
+            </>
+          ) : (
+            <div>
+              <strong>Status:</strong> Analytics data is currently unavailable. Check API connectivity and Redis connection.
+            </div>
+          )}
         </div>
       </div>
     </div>
