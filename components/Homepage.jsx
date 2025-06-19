@@ -4,6 +4,7 @@ import { trackEvent } from '../utils/analytics';
 import DemoView from './DemoView';
 import SetupView from './SetupView';
 import MainApp from './MainApp';
+import RSSUrlBar from './ui/RSSUrlBar';
 
 export default function Homepage() {
   const [view, setView] = useState('demo'); // Start with demo
@@ -14,6 +15,7 @@ export default function Homepage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [copySuccess, setCopySuccess] = useState(false);
 
   useEffect(() => {
     // Generate or retrieve persistent user ID
@@ -43,6 +45,24 @@ export default function Homepage() {
       trackEvent('new_user', { userId: id.substring(0, 8) + '***' });
     }
   }, []);
+
+  // Auto-clear messages
+  useEffect(() => {
+    if (error || success) {
+      const timer = setTimeout(() => {
+        setError('');
+        setSuccess('');
+      }, 7000);
+      return () => clearTimeout(timer);
+    }
+  }, [error, success]);
+
+  useEffect(() => {
+    if (copySuccess) {
+      const timer = setTimeout(() => setCopySuccess(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [copySuccess]);
 
   // Handle setup completion (from setup view)
   const handleSetupComplete = async (apiKey) => {
@@ -92,7 +112,7 @@ export default function Homepage() {
       // Show success message
       const message = data.returning 
         ? 'Welcome back! Your RSS URL is ready.'
-        : '🎉 Setup complete! Your RSS URL is ready and will never change. Add it to Radarr now.';
+        : '🎉 Setup complete! Your RSS URL is ready. Add it to Radarr now.';
       
       setSuccess(message);
       
@@ -120,8 +140,7 @@ export default function Homepage() {
 
     try {
       await navigator.clipboard.writeText(rssUrl);
-      setSuccess('✅ RSS URL copied to clipboard!');
-      setTimeout(() => setSuccess(''), 3000);
+      setCopySuccess(true);
       trackEvent('rss_url_copied', { fromSetup: true });
     } catch (err) {
       setError('Failed to copy URL to clipboard');
@@ -134,8 +153,28 @@ export default function Homepage() {
     setSuccess('');
   };
 
+  // Get movie count for RSS bar
+  const getMovieCount = () => {
+    try {
+      const savedMovies = localStorage.getItem('selectedMovies');
+      return savedMovies ? JSON.parse(savedMovies).length : 0;
+    } catch {
+      return 0;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-900 text-white">
+      {/* Streamlined RSS URL Bar - Only show when user has RSS URL */}
+      {rssUrl && view === 'app' && (
+        <RSSUrlBar 
+          rssUrl={rssUrl}
+          onCopy={copyRssUrl}
+          copySuccess={copySuccess}
+          movieCount={getMovieCount()}
+        />
+      )}
+
       <div className="max-w-4xl mx-auto px-4 py-8">
         <header className="text-center mb-8">
           <h1 className="text-5xl font-bold mb-3 text-purple-400">Helparr</h1>
@@ -166,51 +205,6 @@ export default function Homepage() {
           </div>
         )}
 
-        {/* RSS URL Display (immediately after successful setup) */}
-        {rssUrl && view === 'app' && (
-          <div className="bg-green-600/20 border border-green-500 rounded-xl p-6 mb-6 max-w-4xl mx-auto">
-            <h3 className="text-xl font-bold text-green-300 mb-3">
-              ✅ Your Permanent RSS URL
-            </h3>
-            <p className="text-green-200 mb-4">
-              This URL never changes - add it to Radarr once and you're done! 
-              The feed starts empty but will update automatically as you add movies.
-            </p>
-            
-            <div className="bg-slate-800 rounded-lg p-3 mb-4">
-              <div className="flex items-center space-x-2">
-                <input
-                  type="text"
-                  value={rssUrl}
-                  readOnly
-                  className="flex-1 bg-transparent text-white text-sm font-mono"
-                />
-                <button
-                  onClick={copyRssUrl}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded transition-colors"
-                >
-                  Copy URL
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-2 text-sm text-green-200">
-              <p className="font-semibold">📡 To add to Radarr:</p>
-              <ol className="ml-6 space-y-1">
-                <li>1. Go to Settings → Lists in Radarr</li>
-                <li>2. Click "+" to add a new list</li>
-                <li>3. Choose "RSS List"</li>
-                <li>4. Paste the URL above and save</li>
-                <li>5. Set sync interval to 60+ minutes</li>
-              </ol>
-              <p className="text-xs text-green-300 mt-3">
-                💡 The feed includes a welcome message when empty. 
-                As you add movies, they'll automatically appear for Radarr to discover.
-              </p>
-            </div>
-          </div>
-        )}
-
         {/* View Content */}
         {view === 'demo' && (
           <DemoView onGetStarted={() => setView('setup')} />
@@ -227,6 +221,9 @@ export default function Homepage() {
           <MainApp 
             userId={userId} 
             tenantSecret={tenantSecret}
+            rssUrl={rssUrl}
+            setRssUrl={setRssUrl}
+            onMovieCountChange={() => {}} // RSS bar will read from localStorage
           />
         )}
 
