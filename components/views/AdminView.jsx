@@ -59,7 +59,6 @@ export function AdminView() {
     funnel = {},
     dropoffAnalysis = [],
     usage = {},
-    popularSearches = [],
     performance = {},
     dateRange = { days: 0, start: 'N/A', end: 'N/A' }
   } = analytics || {};
@@ -78,33 +77,61 @@ export function AdminView() {
       <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
         <h3 className="text-xl font-bold text-white mb-6">🎯 Conversion Funnel</h3>
         <div className="space-y-4">
-          {Object.entries(funnel).length > 0 ? (
-            Object.entries(funnel).map(([stage, count], index) => {
-              const percentage = funnel.pageViews ? (count / funnel.pageViews) * 100 : 0;
-              const isDropoff = index > 0 && percentage < 50;
-              
-              return (
-                <div key={stage} className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-300 capitalize">
-                      {stage.replace(/([A-Z])/g, ' $1')}
-                    </span>
-                    <div className="text-right">
-                      <span className="text-white font-bold">{count.toLocaleString()}</span>
-                      <span className="text-slate-400 ml-2">({percentage.toFixed(1)}%)</span>
-                    </div>
-                  </div>
-                  <div className="w-full bg-slate-700 rounded-full h-3">
-                    <div 
-                      className={`h-3 rounded-full transition-all duration-500 ${
-                        isDropoff ? 'bg-red-500' : 'bg-purple-600'
-                      }`}
-                      style={{ width: `${Math.max(percentage, 0)}%` }}
-                    />
+          {funnel.totalUsers !== undefined ? (
+            <>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-300">Total Users</span>
+                  <div className="text-right">
+                    <span className="text-white font-bold">{funnel.totalUsers.toLocaleString()}</span>
+                    <span className="text-slate-400 ml-2">(100%)</span>
                   </div>
                 </div>
-              );
-            })
+                <div className="w-full bg-slate-700 rounded-full h-3">
+                  <div className="h-3 rounded-full bg-purple-600 transition-all duration-500" style={{ width: '100%' }} />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-300">Users with Movies</span>
+                  <div className="text-right">
+                    <span className="text-white font-bold">{funnel.usersWithMovies.toLocaleString()}</span>
+                    <span className="text-slate-400 ml-2">({funnel.conversionRate}%)</span>
+                  </div>
+                </div>
+                <div className="w-full bg-slate-700 rounded-full h-3">
+                  <div 
+                    className={`h-3 rounded-full transition-all duration-500 ${
+                      parseFloat(funnel.conversionRate) < 50 ? 'bg-red-500' : 'bg-purple-600'
+                    }`}
+                    style={{ width: `${Math.max(parseFloat(funnel.conversionRate), 0)}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-300">Actively Used RSS Feeds</span>
+                  <div className="text-right">
+                    <span className="text-white font-bold">{funnel.activelyUsedFeeds.toLocaleString()}</span>
+                    <span className="text-slate-400 ml-2">
+                      ({funnel.usersWithMovies > 0 ? 
+                        ((funnel.activelyUsedFeeds / funnel.usersWithMovies) * 100).toFixed(1) : 0}%)
+                    </span>
+                  </div>
+                </div>
+                <div className="w-full bg-slate-700 rounded-full h-3">
+                  <div 
+                    className="h-3 rounded-full bg-green-600 transition-all duration-500"
+                    style={{ 
+                      width: `${funnel.usersWithMovies > 0 ? 
+                        Math.max((funnel.activelyUsedFeeds / funnel.usersWithMovies) * 100, 0) : 0}%` 
+                    }}
+                  />
+                </div>
+              </div>
+            </>
           ) : (
             <div className="text-center py-8 text-slate-400">
               No funnel data available
@@ -192,25 +219,28 @@ export function AdminView() {
         </div>
       </div>
 
-      {/* Popular Searches - Product Intelligence */}
+      {/* RSS Feed Activity - Core Business Metric */}
       <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
-        <h3 className="text-lg font-bold text-white mb-4">🔥 Popular Searches</h3>
-        <div className="space-y-2">
-          {Array.isArray(popularSearches) && popularSearches.length > 0 ? (
-            popularSearches.map((search, index) => (
-              <div key={search.query || index} className="flex justify-between items-center p-2 bg-slate-700/30 rounded">
-                <div className="flex items-center space-x-3">
-                  <span className="text-slate-500 text-sm">#{index + 1}</span>
-                  <span className="text-slate-300">{search.query || 'Unknown'}</span>
-                </div>
-                <span className="text-purple-400 font-medium">{search.count || 0} searches</span>
-              </div>
-            ))
-          ) : (
-            <div className="text-center py-8 text-slate-400">
-              No search data available
+        <h3 className="text-lg font-bold text-white mb-4">📡 RSS Feed Activity</h3>
+        <div className="grid md:grid-cols-3 gap-4">
+          <div className="text-center p-4 bg-slate-700/30 rounded-lg">
+            <div className="text-2xl font-bold text-green-400">{usage.activelyUsedFeeds || 0}</div>
+            <div className="text-sm text-slate-400">Actively Used Feeds</div>
+            <div className="text-xs text-slate-500 mt-1">Movies + Recent Activity</div>
+          </div>
+          <div className="text-center p-4 bg-slate-700/30 rounded-lg">
+            <div className="text-2xl font-bold text-blue-400">{usage.usersWithMovies || 0}</div>
+            <div className="text-sm text-slate-400">Users with Movies</div>
+            <div className="text-xs text-slate-500 mt-1">Total Collections Created</div>
+          </div>
+          <div className="text-center p-4 bg-slate-700/30 rounded-lg">
+            <div className="text-2xl font-bold text-purple-400">
+              {usage.usersWithMovies > 0 ? 
+                ((usage.activelyUsedFeeds / usage.usersWithMovies) * 100).toFixed(0) : 0}%
             </div>
-          )}
+            <div className="text-sm text-slate-400">RSS Adoption Rate</div>
+            <div className="text-xs text-slate-500 mt-1">Active / Total with Movies</div>
+          </div>
         </div>
       </div>
 
@@ -218,29 +248,15 @@ export function AdminView() {
       <div className="bg-blue-600/20 border border-blue-500 rounded-xl p-6">
         <h3 className="text-lg font-bold text-blue-200 mb-4">💡 Key Insights</h3>
         <div className="space-y-2 text-blue-100 text-sm">
-          {Array.isArray(dropoffAnalysis) && dropoffAnalysis.length > 0 ? (
-            <>
-              <div>
-                <strong>Main Problem:</strong> {dropoffAnalysis.find(d => d.dropRate > 40)?.stage || 'No major issues detected'} 
-                {dropoffAnalysis.find(d => d.dropRate > 40) && (
-                  <span> has {dropoffAnalysis.find(d => d.dropRate > 40)?.dropRate}% drop rate</span>
-                )}
+          {analytics && analytics.insights && Array.isArray(analytics.insights) ? (
+            analytics.insights.map((insight, index) => (
+              <div key={index}>
+                <strong>Insight {index + 1}:</strong> {insight}
               </div>
-              <div>
-                <strong>Conversion Rate:</strong> {
-                  funnel.pageViews && funnel.activeUsers 
-                    ? ((funnel.activeUsers / funnel.pageViews) * 100).toFixed(1)
-                    : '0'
-                }% of visitors become active users
-              </div>
-              <div>
-                <strong>Top Opportunity:</strong> Improving post-setup onboarding could 
-                recover {dropoffAnalysis[2]?.lost || 0} users
-              </div>
-            </>
+            ))
           ) : (
             <div>
-              <strong>Status:</strong> Analytics data is currently unavailable. Check API connectivity and Redis connection.
+              <strong>Status:</strong> Analytics data is currently being calculated. Check back in a few minutes.
             </div>
           )}
         </div>
