@@ -13,7 +13,7 @@ export default function MainApp({ userId, tenantSecret }) {
   // Navigation state
   const [currentView, setCurrentView] = useState('search');
   
-  // Message state
+  // Message state with auto-clear
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [copySuccess, setCopySuccess] = useState(false);
@@ -23,14 +23,16 @@ export default function MainApp({ userId, tenantSecret }) {
   const [selectedMovies, setSelectedMovies] = useState([]);
   const [expandedPeople, setExpandedPeople] = useState(new Set());
   const [rssUrl, setRssUrl] = useState('');
-  
-  // Initialize hooks
+
+  // Initialize hooks with proper error handling
   const personSearch = usePersonSearch(userId, tenantSecret);
   const filmography = useFilmography(userId, tenantSecret);
   const userManagement = useUserManagement();
 
   // Load saved data on mount
   useEffect(() => {
+    if (!userId || !tenantSecret) return;
+    
     try {
       const savedPeople = localStorage.getItem('people');
       const savedRssUrl = localStorage.getItem('rssUrl');
@@ -44,12 +46,19 @@ export default function MainApp({ userId, tenantSecret }) {
       if (savedRssUrl) {
         setRssUrl(savedRssUrl);
       }
+
+      trackEvent('app_loaded', { 
+        hasSavedData: !!savedPeople, 
+        hasRssUrl: !!savedRssUrl,
+        peopleCount: savedPeople ? JSON.parse(savedPeople).length : 0
+      });
     } catch (err) {
       console.error('Failed to load saved data:', err);
+      setError('Failed to load your saved data. Starting fresh.');
     }
-  }, []);
+  }, [userId, tenantSecret]);
 
-  // Auto-clear messages after 7 seconds
+  // Auto-clear messages
   useEffect(() => {
     if (error || success) {
       const timer = setTimeout(() => {
@@ -67,44 +76,57 @@ export default function MainApp({ userId, tenantSecret }) {
     }
   }, [copySuccess]);
 
-  // Update selected movies based on people data
+  // Update selected movies based on people data (immutable)
   const updateSelectedMovies = (peopleData) => {
     try {
-      const allSelectedMovies = [];
-      
-      peopleData.forEach(person => {
-        person.roles?.forEach(role => {
-          role.movies?.forEach(movie => {
-            if (movie.selected !== false && movie.imdb_id) {
-              allSelectedMovies.push({
-                ...movie,
-                source: {
-                  type: person.type === 'collection' ? 'collection' : 'person',
-                  name: person.name,
-                  role: role.type
-                }
-              });
-            }
-          });
-        });
-      });
+      const allSelectedMovies = peopleData.flatMap(person =>
+        person.roles?.flatMap(role =>
+          role.movies
+            ?.filter(movie => movie.selected !== false && movie.imdb_id)
+            .map(movie => ({
+              ...movie,
+              source: {
+                type: person.type === 'collection' ? 'collection' : 'person',
+                name: person.name,
+                role: role.type
+              }
+            })) || []
+        ) || []
+      );
       
       setSelectedMovies(allSelectedMovies);
       localStorage.setItem('selectedMovies', JSON.stringify(allSelectedMovies));
     } catch (err) {
       console.error('Failed to update selected movies:', err);
+      setError('Failed to update movie selection');
     }
   };
 
   // Copy RSS URL to clipboard
   const copyRssUrl = async () => {
+    if (!rssUrl) {
+      setError('No RSS URL to copy. Please generate one first.');
+      return;
+    }
+
     try {
       await navigator.clipboard.writeText(rssUrl);
       setCopySuccess(true);
-      trackEvent('rss_copied');
+      trackEvent('rss_copied', { movieCount: selectedMovies.length });
     } catch (err) {
-      setError('Failed to copy URL');
+      setError('Failed to copy URL to clipboard');
     }
+  };
+
+  // Navigation handler with analytics
+  const handleNavigation = (view) => {
+    setCurrentView(view);
+    trackEvent('navigation', { 
+      from: currentView, 
+      to: view,
+      peopleCount: people.length,
+      movieCount: selectedMovies.length 
+    });
   };
 
   // Clear all messages
@@ -113,20 +135,37 @@ export default function MainApp({ userId, tenantSecret }) {
     setSuccess('');
   };
 
-  // Navigation handler
-  const handleNavigation = (view) => {
-    setCurrentView(view);
-    trackEvent('navigation', { view });
-  };
-
   // Tab configuration
   const tabs = [
-    { key: 'search', label: '🔍 Search', component: SearchView },
-    { key: 'manage', label: '📋 Manage List', component: ManageView, count: people.length },
-    { key: 'help', label: '❓ Help', component: HelpView }
+    { 
+      key: 'search', 
+      label: '🔍 Search', 
+      component: SearchView 
+    },
+    { 
+      key: 'manage', 
+      label: '📋 Manage List', 
+      component: ManageView, 
+      count: people.length 
+    },
+    { 
+      key: 'help', 
+      label: '❓ Help', 
+      component: HelpView 
+    }
   ];
 
   const CurrentViewComponent = tabs.find(tab => tab.key === currentView)?.component || SearchView;
+
+  // Show loading state while initializing
+  if (!userId || !tenantSecret) {
+    return (
+      <div className="max-w-4xl mx-auto text-center py-12">
+        <div className="animate-spin w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+        <p className="text-slate-400">Initializing your movie list...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -163,17 +202,19 @@ export default function MainApp({ userId, tenantSecret }) {
 
       {/* Current View */}
       <CurrentViewComponent
+        // Common props for all views
+        userId={userId}
+        tenantSecret={tenantSecret}
+        setError={setError}
+        setSuccess={setSuccess}
+        handleNavigation={handleNavigation}
+        
         // Search View Props
         personSearch={personSearch}
         filmography={filmography}
         people={people}
         setPeople={setPeople}
         updateSelectedMovies={updateSelectedMovies}
-        setError={setError}
-        setSuccess={setSuccess}
-        handleNavigation={handleNavigation}
-        userId={userId}
-        tenantSecret={tenantSecret}
         
         // Manage View Props
         selectedMovies={selectedMovies}
@@ -181,6 +222,7 @@ export default function MainApp({ userId, tenantSecret }) {
         setExpandedPeople={setExpandedPeople}
         rssUrl={rssUrl}
         setRssUrl={setRssUrl}
+        setTenantSecret={() => {}} // RSS regeneration requires this
         copySuccess={copySuccess}
         copyRssUrl={copyRssUrl}
       />
