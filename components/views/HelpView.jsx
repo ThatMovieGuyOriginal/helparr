@@ -1,16 +1,28 @@
 // components/views/HelpView.jsx
-function HelpSection({ title, content, isNew = false }) {
+function HelpSection({ title, content, isNew = false, steps = null }) {
   return (
     <div className="mb-6">
       <div className="flex items-center space-x-2 mb-3">
         <h3 className="text-xl font-semibold text-white">{title}</h3>
         {isNew && (
           <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-full">
-            UPDATED
+            NEW
           </span>
         )}
       </div>
-      <p className="text-slate-300 leading-relaxed">{content}</p>
+      {content && (
+        <p className="text-slate-300 leading-relaxed mb-3">{content}</p>
+      )}
+      {steps && (
+        <ol className="text-slate-300 space-y-1 ml-4">
+          {steps.map((step, index) => (
+            <li key={index} className="flex">
+              <span className="text-purple-400 font-medium mr-2">{index + 1}.</span>
+              <span>{step}</span>
+            </li>
+          ))}
+        </ol>
+      )}
     </div>
   );
 }
@@ -22,108 +34,161 @@ export default function HelpView() {
         <h2 className="text-3xl font-bold text-white mb-8 text-center">How to Use Helparr</h2>
         
         <div className="space-y-8">
+          {/* Quick Start */}
+          <div className="bg-purple-600/20 border border-purple-500 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-purple-200 mb-3">🚀 Quick Start (5 minutes)</h3>
+            <div className="text-purple-100 text-sm space-y-2">
+              <div><strong>1. Try Demo:</strong> Test search with any actor/director (no signup required)</div>
+              <div><strong>2. Get TMDb Key:</strong> Free from <a href="https://www.themoviedb.org/settings/api" target="_blank" className="text-purple-300 hover:underline">themoviedb.org</a> (takes 1 minute)</div>
+              <div><strong>3. Add to Radarr:</strong> Copy RSS URL to Radarr → Settings → Lists → RSS List</div>
+              <div><strong>4. Search & Select:</strong> Find actors/directors, select movies, auto-sync to RSS</div>
+            </div>
+          </div>
+
           <HelpSection 
-            title="1. 🔍 Search for Actors & Directors"
-            content="Use the Search tab to find any actor, director, producer, sound engineer, or writer by name. Simply type their name and click on the role you want to explore (Actor, Director, Producer, Sound, Writer). You'll see their complete filmography, not just recent movies."
+            title="🎬 Demo Mode"
+            content="Try Helparr instantly without signup. Search any actor, director, or studio to see real movie data. The demo shows recent movies and has usage limits, but gives you a complete preview of the full experience."
+          />
+          
+          <HelpSection 
+            title="⚙️ Setup Process"
+            content="Getting started requires only a free TMDb API key:"
+            steps={[
+              "Visit themoviedb.org and create a free account",
+              "Go to Settings → API and copy your API Key (v3 auth)",
+              "Enter the key in Helparr - your RSS URL generates immediately",
+              "Add the RSS URL to Radarr (Settings → Lists → RSS List)",
+              "Set Radarr sync interval to 60+ minutes"
+            ]}
+          />
+          
+          <HelpSection 
+            title="🔍 Search & Discovery"
+            content="Helparr supports multiple search types for comprehensive movie discovery:"
             isNew={true}
           />
           
+          <div className="grid md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-slate-700/30 p-4 rounded-lg">
+              <h4 className="font-medium text-white mb-2">👤 People</h4>
+              <p className="text-sm text-slate-300 mb-2">Search actors, directors, producers, sound engineers, writers</p>
+              <p className="text-xs text-slate-400">Shows complete career filmography, multiple roles per person</p>
+            </div>
+            <div className="bg-slate-700/30 p-4 rounded-lg">
+              <h4 className="font-medium text-white mb-2">🎬 Movie Series</h4>
+              <p className="text-sm text-slate-300 mb-2">Find complete franchises and collections</p>
+              <p className="text-xs text-slate-400">Marvel, Fast & Furious, Harry Potter, etc.</p>
+            </div>
+            <div className="bg-slate-700/30 p-4 rounded-lg">
+              <h4 className="font-medium text-white mb-2">🏢 Studios</h4>
+              <p className="text-sm text-slate-300 mb-2">Entire catalogs from production companies</p>
+              <p className="text-xs text-slate-400">Disney, A24, Marvel Studios - loads all movies automatically</p>
+            </div>
+          </div>
+
           <HelpSection 
-            title="2. 🎬 Select Movies from Complete Filmography"
-            content="When viewing someone's filmography, you'll see ALL their movies across their entire career, sorted by release date. Each movie shows ratings, release dates, and descriptions. Movies are pre-selected by default - uncheck any you don't want. Use 'Select All' or 'Select None' for quick selection."
+            title="📋 Movie Selection"
+            content="When viewing filmographies or collections, you'll see all available movies sorted by release date. Movies are pre-selected for quick setup - uncheck any you don't want. Large studio catalogs load progressively while you browse."
             isNew={true}
-          />
-          
-          <HelpSection 
-            title="3. ➕ Add to Your Collection"
-            content="After selecting movies, click 'Add X Movies to List' to add them to your collection. The same person can be added multiple times for different roles (e.g., someone who both acts and directs). You can add movies directly from the search results before moving to your management list."
-          />
-          
-          <HelpSection 
-            title="4. 📡 Your Permanent RSS URL"
-            content="Your RSS URL appears at the top of the screen once generated and NEVER changes. You can safely add this URL to Radarr immediately, even before adding movies. The feed starts with a welcome message and automatically updates as you add/remove movies. Click the expand button (▼) to see Radarr setup instructions."
-            isNew={true}
-          />
-          
-          <HelpSection 
-            title="5. 📋 Manage Your Collection"
-            content="The Manage List tab shows all people you've added and their selected movies. Click the arrow button next to each person to expand and see their movies. You can toggle individual movie selections, select/deselect all movies for a role, or remove entire people or specific roles. The RSS feed automatically reflects your changes."
-            isNew={true}
-          />
-          
-          <HelpSection 
-            title="6. 🔄 Updating Your RSS Feed"
-            content="Click 'Update RSS Feed' in the Manage tab whenever you make changes to sync them to your RSS feed. Radarr will pick up the changes on its next sync cycle (which you configure in Radarr's list settings - recommend 60+ minutes)."
-          />
-          
-          <HelpSection 
-            title="7. 📦 Data Management"
-            content="In the Data Management tab, you can export your entire collection as a JSON backup file or import from a previous backup. The import merges with your existing collection without overwriting it. Use 'Reset All' to completely start over (requires double confirmation)."
           />
 
-          <div className="bg-purple-600/20 border border-purple-500 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-purple-200 mb-3">💡 Key Features</h3>
-            <ul className="text-purple-100 space-y-2 text-sm">
-              <li>• <strong>Complete Filmographies:</strong> See entire career spanning decades, not just recent movies</li>
-              <li>• <strong>Permanent RSS URL:</strong> Never changes once generated - safe to add to Radarr immediately</li>
-              <li>• <strong>Live Updates:</strong> RSS feed automatically reflects your movie selections</li>
-              <li>• <strong>Multiple Roles:</strong> Add the same person as actor, director, etc.</li>
-              <li>• <strong>Pre-selection:</strong> Movies are selected by default for faster setup</li>
-              <li>• <strong>Local Storage:</strong> Your data stays private in your browser</li>
-              <li>• <strong>Streamlined UI:</strong> RSS URL always visible at top, expandable help</li>
-              <li>• <strong>Auto-cleanup:</strong> Messages disappear automatically to keep interface clean</li>
-              <li>• <strong>Smart Caching:</strong> Faster searches with intelligent data caching</li>
+          <HelpSection 
+            title="📡 RSS Feed Management"
+            content="Your RSS URL is permanent and appears at the top of the screen once generated. It never changes and updates automatically as you modify your collection:"
+            steps={[
+              "RSS URL generates immediately when you create your account",
+              "Feed starts with a welcome message, updates as you add movies",
+              "Changes auto-sync to RSS after 5 seconds of inactivity",
+              "Click 'Sync Now' for immediate updates",
+              "Feed includes movie details, ratings, and source attribution"
+            ]}
+            isNew={true}
+          />
+
+          <HelpSection 
+            title="🗂️ Collection Management"
+            content="Manage all your sources and movies from the 'Manage List' tab. The system automatically removes duplicate movies while showing you which actors/directors contributed each film."
+          />
+
+          <div className="bg-blue-600/20 border border-blue-500 rounded-lg p-4 mb-6">
+            <h4 className="font-medium text-blue-200 mb-2">Smart Deduplication</h4>
+            <p className="text-blue-100 text-sm">
+              If multiple actors appear in the same movie, Helparr automatically includes it only once in your RSS feed while showing you all the sources. This prevents Radarr from trying to download the same movie multiple times.
+            </p>
+          </div>
+
+          <HelpSection 
+            title="💾 Data Management"
+            content="Export your entire collection as backup or import from previous exports. Data includes all your sources, movie selections, and settings. The import process merges with existing data and auto-syncs your RSS feed."
+          />
+
+          <HelpSection 
+            title="🔧 Radarr Integration"
+            content="Helparr generates standard RSS feeds that work perfectly with Radarr:"
+            steps={[
+              "Copy your RSS URL from the top of the Helparr interface",
+              "In Radarr: Settings → Lists → Add List → RSS List",
+              "Paste URL and set sync interval (recommended: 60+ minutes)",
+              "Configure quality profiles and download settings as desired",
+              "Radarr will automatically discover and download new movies"
+            ]}
+          />
+
+          <div className="bg-green-600/20 border border-green-500 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-green-200 mb-3">💡 Pro Tips</h3>
+            <ul className="text-green-100 space-y-2 text-sm">
+              <li>• <strong>Multi-Role Strategy:</strong> Add versatile people in multiple roles (e.g., Clint Eastwood as both actor and director)</li>
+              <li>• <strong>Studio Power:</strong> Use production companies for bulk discovery of similar films</li>
+              <li>• <strong>RSS First:</strong> Add your RSS URL to Radarr immediately - it works even with zero movies</li>
+              <li>• <strong>Batch Selection:</strong> Use Select All/None for quick setup of large filmographies</li>
+              <li>• <strong>Regular Backups:</strong> Export your collection periodically to protect against data loss</li>
+              <li>• <strong>Progressive Loading:</strong> Large studio catalogs load in background - you can start selecting immediately</li>
             </ul>
           </div>
 
-          <div className="bg-blue-600/20 border border-blue-500 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-blue-200 mb-3">📡 RSS Feed & Radarr Setup</h3>
-            <div className="text-blue-100 text-sm space-y-3">
+          <div className="bg-yellow-600/20 border border-yellow-500 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-yellow-200 mb-3">🔧 Troubleshooting</h3>
+            <div className="text-yellow-100 text-sm space-y-3">
               <div>
-                <strong className="text-blue-200">Quick Setup:</strong>
-                <ol className="ml-4 mt-1 space-y-1">
-                  <li>1. Copy your RSS URL from the top bar</li>
-                  <li>2. In Radarr: Settings → Lists → Add List → RSS List</li>
-                  <li>3. Paste URL and set sync interval to 60+ minutes</li>
-                  <li>4. Save - Radarr will automatically discover new movies</li>
-                </ol>
+                <strong className="text-yellow-200">RSS feed not updating:</strong>
+                <p>Click 'Sync Now' to force immediate update. Check that movies have IMDB IDs (only those appear in RSS).</p>
               </div>
-              
               <div>
-                <strong className="text-blue-200">How it works:</strong>
-                <ul className="ml-4 mt-1 space-y-1">
-                  <li>• RSS URL is permanent and never expires</li>
-                  <li>• Feed includes IMDB IDs for perfect Radarr compatibility</li>
-                  <li>• Empty feeds show welcome message (won't break Radarr)</li>
-                  <li>• Updates happen automatically when you modify selections</li>
-                  <li>• Each movie includes source information (actor/director name)</li>
-                </ul>
+                <strong className="text-yellow-200">Search not working:</strong>
+                <p>Verify your TMDb API key at themoviedb.org/settings/api. Keys are free and activate instantly.</p>
+              </div>
+              <div>
+                <strong className="text-yellow-200">Radarr not seeing movies:</strong>
+                <p>Check Radarr's list sync interval and logs. Ensure your RSS URL is correctly pasted and accessible.</p>
+              </div>
+              <div>
+                <strong className="text-yellow-200">Large studios loading slowly:</strong>
+                <p>Studio catalogs with 1000+ movies load progressively. You can start selecting while more load in background.</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-yellow-600/20 border border-yellow-500 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-yellow-200 mb-3">🚀 Pro Tips</h3>
-            <ul className="text-yellow-100 space-y-2 text-sm">
-              <li>• <strong>Start Early:</strong> Add your RSS URL to Radarr even before adding movies</li>
-              <li>• <strong>Batch Selection:</strong> Use Select All/None buttons for faster movie selection</li>
-              <li>• <strong>Role Flexibility:</strong> Add versatile people in multiple roles (actor + director)</li>
-              <li>• <strong>Export Backups:</strong> Regular exports protect against data loss</li>
-              <li>• <strong>Smart Browsing:</strong> Movies auto-sort by release date for easy browsing</li>
-              <li>• <strong>Clean Interface:</strong> Expand RSS help only when needed to reduce clutter</li>
-              <li>• <strong>Performance:</strong> Complete filmographies load efficiently with smart pagination</li>
-            </ul>
-          </div>
-
           <div className="bg-slate-700 p-6 rounded-lg">
-            <h3 className="text-lg font-bold text-white mb-3">🔧 Technical Details</h3>
-            <div className="text-slate-300 text-sm space-y-2">
-              <div><strong>Data Storage:</strong> Local browser storage (private and secure)</div>
-              <div><strong>API Source:</strong> TMDb (The Movie Database) for comprehensive movie data</div>
-              <div><strong>RSS Format:</strong> Standard RSS 2.0 with IMDB IDs for Radarr compatibility</div>
-              <div><strong>Updates:</strong> Real-time sync between selections and RSS feed</div>
-              <div><strong>Caching:</strong> Smart caching for improved performance and reduced API calls</div>
-              <div><strong>Limits:</strong> Up to 200 movies per person for optimal performance</div>
+            <h3 className="text-lg font-bold text-white mb-3">📊 Technical Details</h3>
+            <div className="grid md:grid-cols-2 gap-4 text-slate-300 text-sm">
+              <div>
+                <h4 className="font-medium text-white mb-2">Data & Privacy</h4>
+                <div className="space-y-1">
+                  <div><strong>Storage:</strong> Your browser (localStorage) + Redis backup</div>
+                  <div><strong>Privacy:</strong> Your movie selections stay local and private</div>
+                  <div><strong>API Source:</strong> TMDb (The Movie Database) for comprehensive data</div>
+                  <div><strong>Sync:</strong> Real-time updates between interface and RSS feed</div>
+                </div>
+              </div>
+              <div>
+                <h4 className="font-medium text-white mb-2">Performance & Limits</h4>
+                <div className="space-y-1">
+                  <div><strong>Movies per source:</strong> Up to 200 for optimal performance</div>
+                  <div><strong>Rate limiting:</strong> Smart queuing prevents API limits</div>
+                  <div><strong>Caching:</strong> Intelligent caching for faster repeated searches</div>
+                  <div><strong>RSS format:</strong> Standard RSS 2.0 with IMDB IDs for Radarr</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
