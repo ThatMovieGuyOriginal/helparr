@@ -4,7 +4,7 @@ import SearchFilmographySelector from '../filmography/SearchFilmographySelector'
 import { trackEvent } from '../../utils/analytics';
 
 export default function SearchView({ 
-  sourceSearch, // Renamed from personSearch
+  sourceSearch,
   filmography, 
   people, 
   setPeople, 
@@ -36,13 +36,16 @@ export default function SearchView({
     sourceType,
     roleType,
     selectedMoviesInSearch,
-    paginationInfo,
-    isLoadingMore,
+    // Streaming properties
+    isStreaming,
+    streamingProgress,
+    rateLimitStatus,
+    // Methods
     getSourceMovies,
-    loadMoreMovies,
     toggleMovieInSearch,
     selectAllInSearch,
-    clearFilmography
+    clearFilmography,
+    cancelStreaming
   } = filmography;
 
   // Search type configuration
@@ -63,7 +66,7 @@ export default function SearchView({
       key: 'companies', 
       label: '🏢 Studios', 
       placeholder: 'Search for Disney, A24, Marvel Studios...',
-      description: 'Movies from production companies'
+      description: 'Movies from production companies (auto-loads all movies)'
     }
   ];
 
@@ -188,6 +191,18 @@ export default function SearchView({
           </div>
         </div>
 
+        {/* Enhanced company info */}
+        {searchType === 'companies' && (
+          <div className="mt-4 p-3 bg-purple-600/10 border border-purple-500/30 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <span className="text-purple-300 text-sm">🚀</span>
+              <span className="text-purple-200 text-sm">
+                <strong>Auto-loading:</strong> Large studios will automatically load all movies in the background while you browse.
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Search Results */}
         {searchResults.length > 0 && (
           <div className="mt-6">
@@ -279,14 +294,16 @@ export default function SearchView({
                       </div>
                     </div>
 
-                    {/* Single Action Button for Collections/Companies */}
+                    {/* Action Button with streaming awareness */}
                     <div className="mt-4">
                       <button
                         onClick={() => handleGetSourceMovies(source, source.type)}
                         disabled={filmographyLoading}
                         className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-600 text-white rounded-lg transition-colors duration-200"
                       >
-                        {filmographyLoading ? 'Loading...' : `View ${source.type === 'collection' ? 'Series' : 'Studio'} Movies`}
+                        {filmographyLoading ? 'Loading...' : 
+                         source.type === 'company' ? 'Load All Studio Movies' :
+                         `View ${source.type === 'collection' ? 'Series' : 'Studio'} Movies`}
                       </button>
                     </div>
                   </div>
@@ -297,7 +314,7 @@ export default function SearchView({
         )}
       </div>
 
-      {/* Filmography/Source Movies Selection */}
+      {/* Filmography/Source Movies Selection with Streaming */}
       {selectedSource && (
         <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
           <div className="flex items-center justify-between mb-6">
@@ -306,6 +323,11 @@ export default function SearchView({
               {sourceType === 'person' && ` (${roleType})`}
               {sourceType === 'collection' && ' Collection'}
               {sourceType === 'company' && ' Movies'}
+              {isStreaming && streamingProgress && (
+                <span className="ml-2 text-blue-400 text-sm font-normal">
+                  (Loading {streamingProgress.totalEstimated.toLocaleString()} movies...)
+                </span>
+              )}
             </h3>
             <button
               onClick={clearFilmography}
@@ -318,16 +340,23 @@ export default function SearchView({
           {filmographyLoading ? (
             <div className="text-center py-8">
               <div className="animate-spin w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-              <p className="text-slate-400">Loading movies...</p>
+              <p className="text-slate-400">
+                {sourceType === 'company' ? 'Preparing to load all movies...' : 'Loading movies...'}
+              </p>
             </div>
           ) : filmographyData.length > 0 ? (
             <>
-              {/* Auto-sync reminder */}
+              {/* Auto-sync reminder with streaming awareness */}
               <div className="mb-4 p-3 bg-green-600/10 border border-green-500/30 rounded-lg">
                 <div className="flex items-center space-x-2">
                   <span className="text-green-300 text-sm">✅</span>
                   <span className="text-green-200 text-sm">
-                    Movies will auto-sync to your RSS feed after you add them. No manual sync needed!
+                    <strong>Auto-sync enabled:</strong> Movies will auto-sync to your RSS feed after you add them.
+                    {isStreaming && (
+                      <span className="block mt-1 text-green-300">
+                        You can add movies now while more load in the background!
+                      </span>
+                    )}
                   </span>
                 </div>
               </div>
@@ -340,9 +369,11 @@ export default function SearchView({
                 personName={selectedSource.name}
                 role={sourceType === 'person' ? roleType : sourceType}
                 sourceType={sourceType}
-                paginationInfo={paginationInfo}
-                onLoadMore={sourceType === 'company' ? loadMoreMovies : null}
-                isLoadingMore={isLoadingMore}
+                // Streaming props
+                isStreaming={isStreaming}
+                streamingProgress={streamingProgress}
+                rateLimitStatus={rateLimitStatus}
+                onCancelStreaming={cancelStreaming}
               />
             </>
           ) : (
