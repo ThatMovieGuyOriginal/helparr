@@ -1,350 +1,189 @@
 // components/MainApp.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { usePersonSearch } from '../hooks/usePersonSearch';
+import { useFilmography } from '../hooks/useFilmography';
 import { useUserManagement } from '../hooks/useUserManagement';
-import { generateSignature, trackEvent } from '../utils/analytics';
-
-// SAFE RENDERING FUNCTION - prevents all join errors
-function safeRender(data, fallback = '') {
-  try {
-    if (data == null) return fallback;
-    if (typeof data === 'string') return data;
-    if (Array.isArray(data)) {
-      return data.map(item => item?.title || item?.name || item).filter(Boolean).join(', ');
-    }
-    return String(data);
-  } catch (error) {
-    console.error('Safe render error:', error, data);
-    return fallback;
-  }
-}
-
-// SAFE ARRAY CHECK - ensures we only map over valid arrays
-function safeArray(data, fallbackArray = []) {
-  try {
-    if (!data) {
-      console.log('🛡️ safeArray: data is null/undefined, returning fallback');
-      return fallbackArray;
-    }
-    if (!Array.isArray(data)) {
-      console.error('🛡️ safeArray: data is not an array:', typeof data, data);
-      return fallbackArray;
-    }
-    return data;
-  } catch (error) {
-    console.error('🛡️ safeArray error:', error, data);
-    return fallbackArray;
-  }
-}
+import { trackEvent } from '../utils/analytics';
+import SearchView from './views/SearchView';
+import ManageView from './views/ManageView';
+import HelpView from './views/HelpView';
+import MessageContainer from './ui/MessageContainer';
 
 export default function MainApp({ userId, tenantSecret }) {
-  // ... keep all existing state and functions ...
+  // Navigation state
+  const [currentView, setCurrentView] = useState('search');
+  
+  // Message state
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [copySuccess, setCopySuccess] = useState(false);
+  
+  // Core application state
+  const [people, setPeople] = useState([]);
+  const [selectedMovies, setSelectedMovies] = useState([]);
+  const [expandedPeople, setExpandedPeople] = useState(new Set());
+  const [rssUrl, setRssUrl] = useState('');
+  
+  // Initialize hooks
+  const personSearch = usePersonSearch(userId, tenantSecret);
+  const filmography = useFilmography(userId, tenantSecret);
+  const userManagement = useUserManagement();
 
-  // FIXED: Clear state management - no redundant displays
-  try {
-    console.log('🔍 MainApp RENDER START');
-    
-    return (
-      <div>
-        {/* Error/Success Messages */}
-        {error && (
-          <div className="bg-red-500/20 border border-red-500 rounded-lg p-4 mb-4">
-            <div className="flex items-center justify-between">
-              <p className="text-red-200">{error}</p>
-              <button onClick={() => setError('')} className="text-red-200 hover:text-white">✕</button>
-            </div>
-          </div>
-        )}
-        
-        {success && (
-          <div className="bg-green-500/20 border border-green-500 rounded-lg p-4 mb-4">
-            <div className="flex items-center justify-between">
-              <p className="text-green-200">{success}</p>
-              <button onClick={() => setSuccess('')} className="text-green-200 hover:text-white">✕</button>
-            </div>
-          </div>
-        )}
+  // Load saved data on mount
+  useEffect(() => {
+    try {
+      const savedPeople = localStorage.getItem('people');
+      const savedRssUrl = localStorage.getItem('rssUrl');
+      
+      if (savedPeople) {
+        const parsedPeople = JSON.parse(savedPeople);
+        setPeople(parsedPeople);
+        updateSelectedMovies(parsedPeople);
+      }
+      
+      if (savedRssUrl) {
+        setRssUrl(savedRssUrl);
+      }
+    } catch (err) {
+      console.error('Failed to load saved data:', err);
+    }
+  }, []);
 
-        {/* RSS SUCCESS: Show ONLY when we have RSS URL - single display */}
-        {rssUrl && (
-          <div className="bg-green-600/20 border border-green-500 rounded-xl p-6 mb-6">
-            <div className="text-center mb-4">
-              <h2 className="text-2xl font-bold text-green-300 mb-2">✅ RSS Feed Ready!</h2>
-              <p className="text-green-200">
-                {selectedMovies.length} movies from {selectedPerson?.name || 'Unknown'} added to your feed
-              </p>
-            </div>
-            
-            <div className="bg-slate-800 rounded-lg p-3 mb-4">
-              <div className="flex items-center space-x-2">
-                <input
-                  type="text"
-                  value={rssUrl}
-                  readOnly
-                  className="flex-1 bg-transparent text-white text-sm font-mono"
-                />
-                <button
-                  onClick={copyRssUrl}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded"
-                >
-                  {copied ? '✓ Copied!' : 'Copy'}
-                </button>
-              </div>
-            </div>
+  // Auto-clear messages after 7 seconds
+  useEffect(() => {
+    if (error || success) {
+      const timer = setTimeout(() => {
+        setError('');
+        setSuccess('');
+      }, 7000);
+      return () => clearTimeout(timer);
+    }
+  }, [error, success]);
 
-            <div className="space-y-2 text-sm text-slate-300 mb-4">
-              <p className="font-semibold">📡 Add to Radarr:</p>
-              <ol className="ml-6 space-y-1">
-                <li>1. Go to Settings → Lists in Radarr</li>
-                <li>2. Click "+" to add a new list</li>
-                <li>3. Choose "RSS List"</li>
-                <li>4. Paste your URL and save</li>
-                <li>5. Set sync interval to 60+ minutes</li>
-              </ol>
-            </div>
+  useEffect(() => {
+    if (copySuccess) {
+      const timer = setTimeout(() => setCopySuccess(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [copySuccess]);
 
-            <div className="flex justify-center space-x-3">
-              <button
-                onClick={() => {
-                  // Add more actors - keep RSS, reset search
-                  setSelectedPerson(null);
-                  setPersonMovies([]);
-                  setSelectedMovies([]);
-                  setSearchQuery('');
-                  setSearchResults([]);
-                }}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded"
-              >
-                ➕ Add More Actors
-              </button>
-              <button
-                onClick={startOver}
-                className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded"
-              >
-                🔄 Start Over
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* SEARCH: Show ONLY when no RSS URL and no selected person */}
-        {!rssUrl && !selectedPerson && (
-          <form onSubmit={handleSearch} className="mb-6">
-            <div className="flex space-x-2">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search for an actor or director..."
-                className="flex-1 px-4 py-3 bg-slate-800 rounded-lg text-white placeholder-slate-400"
-              />
-              <button
-                type="submit"
-                disabled={loading}
-                className="px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-600 text-white font-semibold rounded-lg"
-              >
-                {loading ? 'Searching...' : 'Search'}
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* SEARCH RESULTS: Show ONLY when we have results and no selected person */}
-        {!selectedPerson && (() => {
-          try {
-            const safeResults = safeArray(searchResults, []);
-            
-            if (safeResults.length > 0) {
-              return (
-                <div className="space-y-3">
-                  {safeResults.map((person, index) => {
-                    try {
-                      if (!person || typeof person !== 'object') {
-                        return null;
-                      }
-
-                      return (
-                        <button
-                          key={person.id || index}
-                          onClick={() => handleSelectPerson(person)}
-                          className="w-full flex items-center space-x-4 p-4 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors text-left"
-                        >
-                          {person.profile_path && (
-                            <img
-                              src={`https://image.tmdb.org/t/p/w92${person.profile_path}`}
-                              alt={person.name || 'Unknown'}
-                              className="w-12 h-12 rounded-full object-cover"
-                            />
-                          )}
-                          <div className="flex-1">
-                            <h3 className="font-semibold text-white">
-                              {safeRender(person.name, 'Unknown')}
-                            </h3>
-                            <p className="text-sm text-slate-400">
-                              {safeRender(person.known_for_department, 'Acting')} • {safeRender(person.known_for, 'No credits listed')}
-                            </p>
-                          </div>
-                          <span className="text-purple-400">Select →</span>
-                        </button>
-                      );
-                    } catch (renderError) {
-                      console.error(`🔍 Error rendering person ${index}:`, renderError);
-                      return null;
-                    }
-                  })}
-                </div>
-              );
+  // Update selected movies based on people data
+  const updateSelectedMovies = (peopleData) => {
+    try {
+      const allSelectedMovies = [];
+      
+      peopleData.forEach(person => {
+        person.roles?.forEach(role => {
+          role.movies?.forEach(movie => {
+            if (movie.selected !== false && movie.imdb_id) {
+              allSelectedMovies.push({
+                ...movie,
+                source: {
+                  type: person.type === 'collection' ? 'collection' : 'person',
+                  name: person.name,
+                  role: role.type
+                }
+              });
             }
-            return null;
-          } catch (resultsError) {
-            console.error('🔍 Error rendering search results:', resultsError);
-            return (
-              <div className="p-4 bg-red-900/20 border border-red-500 rounded-lg">
-                <p className="text-red-200">Error displaying search results</p>
-              </div>
-            );
-          }
-        })()}
+          });
+        });
+      });
+      
+      setSelectedMovies(allSelectedMovies);
+      localStorage.setItem('selectedMovies', JSON.stringify(allSelectedMovies));
+    } catch (err) {
+      console.error('Failed to update selected movies:', err);
+    }
+  };
 
-        {/* MOVIE SELECTION: Show ONLY when we have selected person and no RSS URL */}
-        {selectedPerson && !rssUrl && (() => {
-          try {
-            const safePersonMovies = safeArray(personMovies, []);
-            const safeSelectedMovies = safeArray(selectedMovies, []);
-            
-            return (
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h2 className="text-xl font-bold text-white">
-                      {safeRender(selectedPerson.name, 'Unknown')}'s Movies
-                    </h2>
-                    <p className="text-sm text-slate-400">
-                      {safeSelectedMovies.length} of {safePersonMovies.length} selected
-                    </p>
-                  </div>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => {
-                        setSelectedPerson(null);
-                        setPersonMovies([]);
-                        setSelectedMovies([]);
-                      }}
-                      className="text-slate-400 hover:text-white"
-                    >
-                      ← Back
-                    </button>
-                    <button
-                      onClick={selectAll}
-                      className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded"
-                    >
-                      Select All
-                    </button>
-                    <button
-                      onClick={selectNone}
-                      className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded"
-                    >
-                      Select None
-                    </button>
-                  </div>
-                </div>
+  // Copy RSS URL to clipboard
+  const copyRssUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(rssUrl);
+      setCopySuccess(true);
+      trackEvent('rss_copied');
+    } catch (err) {
+      setError('Failed to copy URL');
+    }
+  };
 
-                {loading && (
-                  <div className="text-center py-8">
-                    <div className="animate-spin w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-                    <p className="text-slate-400">Loading movies...</p>
-                  </div>
-                )}
+  // Clear all messages
+  const clearMessages = () => {
+    setError('');
+    setSuccess('');
+  };
 
-                {safePersonMovies.length > 0 && (
-                  <>
-                    <div className="grid gap-3 mb-6 max-h-96 overflow-y-auto">
-                      {safePersonMovies.map((movie, index) => {
-                        try {
-                          if (!movie || typeof movie !== 'object') {
-                            return null;
-                          }
+  // Navigation handler
+  const handleNavigation = (view) => {
+    setCurrentView(view);
+    trackEvent('navigation', { view });
+  };
 
-                          return (
-                            <label
-                              key={movie.id || index}
-                              className="flex items-center space-x-3 p-3 bg-slate-800 hover:bg-slate-700 rounded-lg cursor-pointer"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={safeSelectedMovies.includes(movie.id)}
-                                onChange={() => toggleMovie(movie.id)}
-                                className="w-4 h-4 text-purple-600 rounded"
-                              />
-                              {movie.poster_path && (
-                                <img
-                                  src={`https://image.tmdb.org/t/p/w92${movie.poster_path}`}
-                                  alt={safeRender(movie.title, 'Unknown')}
-                                  className="w-12 h-18 object-cover rounded"
-                                />
-                              )}
-                              <div className="flex-1">
-                                <h4 className="font-medium text-white">
-                                  {safeRender(movie.title, 'Unknown')} ({safeRender(movie.year, 'Unknown')})
-                                </h4>
-                                {movie.vote_average > 0 && (
-                                  <p className="text-sm text-slate-400">
-                                    ⭐ {movie.vote_average.toFixed(1)}
-                                  </p>
-                                )}
-                                {!movie.imdb_id && (
-                                  <p className="text-xs text-red-400">No IMDB ID - won't work with Radarr</p>
-                                )}
-                              </div>
-                            </label>
-                          );
-                        } catch (movieError) {
-                          console.error(`🔍 Error rendering movie ${index}:`, movieError);
-                          return null;
-                        }
-                      })}
-                    </div>
+  // Tab configuration
+  const tabs = [
+    { key: 'search', label: '🔍 Search', component: SearchView },
+    { key: 'manage', label: '📋 Manage List', component: ManageView, count: people.length },
+    { key: 'help', label: '❓ Help', component: HelpView }
+  ];
 
-                    <button
-                      onClick={generateRss}
-                      disabled={safeSelectedMovies.length === 0 || loading}
-                      className="w-full py-3 bg-green-600 hover:bg-green-700 disabled:bg-slate-600 text-white font-bold rounded-lg"
-                    >
-                      {loading ? 'Generating RSS Feed...' : `Generate RSS Feed (${safeSelectedMovies.length} movies)`}
-                    </button>
-                  </>
-                )}
+  const CurrentViewComponent = tabs.find(tab => tab.key === currentView)?.component || SearchView;
 
-                {!loading && safePersonMovies.length === 0 && (
-                  <div className="text-center py-8">
-                    <p className="text-slate-400">No movies found for this person.</p>
-                  </div>
-                )}
-              </div>
-            );
-          } catch (movieSectionError) {
-            console.error('🔍 Error rendering movie section:', movieSectionError);
-            return (
-              <div className="p-4 bg-red-900/20 border border-red-500 rounded-lg">
-                <p className="text-red-200">Error displaying movie selection</p>
-              </div>
-            );
-          }
-        })()}
+  return (
+    <div className="max-w-6xl mx-auto">
+      {/* Message Container */}
+      <MessageContainer
+        error={error}
+        success={success}
+        copySuccess={copySuccess}
+        onClearMessages={clearMessages}
+        onClearCopySuccess={() => setCopySuccess(false)}
+      />
+
+      {/* Tab Navigation */}
+      <div className="flex space-x-1 bg-slate-800/30 rounded-lg p-1 mb-6">
+        {tabs.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => handleNavigation(tab.key)}
+            className={`flex-1 px-4 py-3 rounded-lg font-medium transition-all duration-200 ${
+              currentView === tab.key
+                ? 'bg-purple-600 text-white shadow-lg'
+                : 'text-slate-300 hover:text-white hover:bg-slate-700'
+            }`}
+          >
+            {tab.label}
+            {tab.count > 0 && (
+              <span className="ml-2 text-xs bg-white/20 px-2 py-1 rounded-full">
+                {tab.count}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
-    );
-  } catch (mainRenderError) {
-    console.error('🔍 CRITICAL: MainApp render error:', mainRenderError);
-    return (
-      <div className="p-8 bg-red-900 text-white">
-        <h1 className="text-2xl font-bold mb-4">🚨 Critical Error</h1>
-        <p>Error: {mainRenderError.message}</p>
-        <button 
-          onClick={() => window.location.reload()}
-          className="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 rounded"
-        >
-          Reload Page
-        </button>
-      </div>
-    );
-  }
+
+      {/* Current View */}
+      <CurrentViewComponent
+        // Search View Props
+        personSearch={personSearch}
+        filmography={filmography}
+        people={people}
+        setPeople={setPeople}
+        updateSelectedMovies={updateSelectedMovies}
+        setError={setError}
+        setSuccess={setSuccess}
+        handleNavigation={handleNavigation}
+        userId={userId}
+        tenantSecret={tenantSecret}
+        
+        // Manage View Props
+        selectedMovies={selectedMovies}
+        expandedPeople={expandedPeople}
+        setExpandedPeople={setExpandedPeople}
+        rssUrl={rssUrl}
+        setRssUrl={setRssUrl}
+        copySuccess={copySuccess}
+        copyRssUrl={copyRssUrl}
+      />
+    </div>
+  );
 }
