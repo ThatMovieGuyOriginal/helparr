@@ -1,6 +1,6 @@
 // components/MainApp.jsx
 import { useState, useEffect } from 'react';
-import { usePersonSearch } from '../hooks/usePersonSearch';
+import { useSourceSearch } from '../hooks/useSourceSearch';
 import { useFilmography } from '../hooks/useFilmography';
 import { useUserManagement } from '../hooks/useUserManagement';
 import { trackEvent } from '../utils/analytics';
@@ -31,7 +31,7 @@ export default function MainApp({
   const [expandedPeople, setExpandedPeople] = useState(new Set());
 
   // Initialize hooks with proper error handling
-  const personSearch = usePersonSearch(userId, tenantSecret);
+  const sourceSearch = useSourceSearch(userId, tenantSecret);
   const filmography = useFilmography(userId, tenantSecret);
   const userManagement = useUserManagement();
 
@@ -221,7 +221,7 @@ export default function MainApp({
         handleNavigation={handleNavigation}
         
         // Search View Props
-        personSearch={personSearch}
+        sourceSearch={sourceSearch}
         filmography={filmography}
         people={people}
         setPeople={setPeople}
