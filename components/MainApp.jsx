@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useSourceSearch } from '../hooks/useSourceSearch';
 import { useFilmography } from '../hooks/useFilmography';
 import { useUserManagement } from '../hooks/useUserManagement';
+import { updateSelectedMoviesWithDeduplication } from '../utils/movieDeduplication';
 import { trackEvent } from '../utils/analytics';
 import SearchView from './views/SearchView';
 import ManageView from './views/ManageView';
@@ -27,7 +28,8 @@ export default function MainApp({
   
   // Core application state
   const [people, setPeople] = useState([]);
-  const [selectedMovies, setSelectedMovies] = useState([]);
+  const [selectedMovies, setSelectedMovies] = useState([]); // Deduplicated movies
+  const [rawSelectedMovies, setRawSelectedMovies] = useState([]); // Original selections for display
   const [expandedPeople, setExpandedPeople] = useState(new Set());
 
   // Initialize hooks with proper error handling
@@ -84,10 +86,11 @@ export default function MainApp({
     }
   }, [copySuccess]);
 
-  // Update selected movies based on people data (immutable)
+  // Enhanced movie selection update with deduplication
   const updateSelectedMovies = (peopleData) => {
     try {
-      const allSelectedMovies = peopleData.flatMap(person =>
+      // Generate raw selected movies for display purposes (shows under each person)
+      const allRawMovies = peopleData.flatMap(person =>
         person.roles?.flatMap(role =>
           role.movies
             ?.filter(movie => movie.selected !== false && movie.imdb_id)
@@ -96,17 +99,32 @@ export default function MainApp({
               source: {
                 type: person.type === 'collection' ? 'collection' : 'person',
                 name: person.name,
-                role: role.type
+                role: role.type,
+                personId: person.id
               }
             })) || []
         ) || []
       );
       
-      setSelectedMovies(allSelectedMovies);
-      localStorage.setItem('selectedMovies', JSON.stringify(allSelectedMovies));
+      // Generate deduplicated movies for RSS feed
+      const deduplicatedMovies = updateSelectedMoviesWithDeduplication(peopleData);
       
-      // Update movie count in parent
-      onMovieCountChange?.(allSelectedMovies.length);
+      // Update both raw and deduplicated states
+      setRawSelectedMovies(allRawMovies);
+      setSelectedMovies(deduplicatedMovies);
+      
+      // Store deduplicated movies for RSS generation
+      localStorage.setItem('selectedMovies', JSON.stringify(deduplicatedMovies));
+      
+      // Update movie count in parent (use deduplicated count)
+      onMovieCountChange?.(deduplicatedMovies.length);
+      
+      // Log deduplication stats for debugging
+      if (allRawMovies.length !== deduplicatedMovies.length) {
+        const duplicatesRemoved = allRawMovies.length - deduplicatedMovies.length;
+        console.log(`🎬 Deduplication: ${allRawMovies.length} total selections → ${deduplicatedMovies.length} unique movies (${duplicatesRemoved} duplicates removed)`);
+      }
+      
     } catch (err) {
       console.error('Failed to update selected movies:', err);
       setError('Failed to update movie selection');
@@ -123,7 +141,11 @@ export default function MainApp({
     try {
       await navigator.clipboard.writeText(rssUrl);
       setCopySuccess(true);
-      trackEvent('rss_copied', { movieCount: selectedMovies.length });
+      trackEvent('rss_copied', { 
+        movieCount: selectedMovies.length,
+        rawMovieCount: rawSelectedMovies.length,
+        duplicatesRemoved: rawSelectedMovies.length - selectedMovies.length
+      });
     } catch (err) {
       setError('Failed to copy URL to clipboard');
     }
@@ -136,7 +158,8 @@ export default function MainApp({
       from: currentView, 
       to: view,
       peopleCount: people.length,
-      movieCount: selectedMovies.length 
+      movieCount: selectedMovies.length,
+      rawMovieCount: rawSelectedMovies.length
     });
   };
 
@@ -146,7 +169,7 @@ export default function MainApp({
     setSuccess('');
   };
 
-  // Tab configuration
+  // Tab configuration with enhanced counts
   const tabs = [
     { 
       key: 'search', 
@@ -227,8 +250,10 @@ export default function MainApp({
         setPeople={setPeople}
         updateSelectedMovies={updateSelectedMovies}
         
-        // Manage View Props (enhanced with auto-sync)
-        selectedMovies={selectedMovies}
+        // Manage View Props (enhanced with deduplication data)
+        selectedMovies={selectedMovies} // Deduplicated for RSS
+        rawSelectedMovies={rawSelectedMovies} // For display/stats
+        people={people} // For duplicate detection
         expandedPeople={expandedPeople}
         setExpandedPeople={setExpandedPeople}
         rssUrl={rssUrl}
