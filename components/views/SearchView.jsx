@@ -1,4 +1,4 @@
-// components/views/SearchView.jsx
+// components/views/SearchView.jsx - Enhanced with pagination support
 import { useUserManagement } from '../../hooks/useUserManagement';
 import SearchFilmographySelector from '../filmography/SearchFilmographySelector';
 import { trackEvent } from '../../utils/analytics';
@@ -36,7 +36,10 @@ export default function SearchView({
     sourceType,
     roleType,
     selectedMoviesInSearch,
+    paginationInfo,
+    isLoadingMore,
     getSourceMovies,
+    loadMoreMovies,
     toggleMovieInSearch,
     selectAllInSearch,
     clearFilmography
@@ -101,7 +104,7 @@ export default function SearchView({
         onMovieCountChange
       );
     } else {
-      // Use new collection/company flow
+      // Use collection/company flow
       userManagement.addCollectionToList(
         selectedSource,
         moviesToAdd,
@@ -337,6 +340,9 @@ export default function SearchView({
                 personName={selectedSource.name}
                 role={sourceType === 'person' ? roleType : sourceType}
                 sourceType={sourceType}
+                paginationInfo={paginationInfo}
+                onLoadMore={sourceType === 'company' ? loadMoreMovies : null}
+                isLoadingMore={isLoadingMore}
               />
             </>
           ) : (
