@@ -8,7 +8,8 @@ import { trackEvent } from '../../utils/analytics';
 export default function ManageView({
   people,
   setPeople,
-  selectedMovies,
+  selectedMovies, // Deduplicated movies for RSS
+  rawSelectedMovies, // All selections for display stats
   updateSelectedMovies,
   expandedPeople,
   setExpandedPeople,
@@ -29,25 +30,30 @@ export default function ManageView({
   const [usageStats, setUsageStats] = useState(null);
   const userManagement = useUserManagement();
 
-  // Load basic stats
+  // Load enhanced stats with deduplication information
   useEffect(() => {
     const stats = {
-      peopleCount: people.filter(p => p.type === 'person' || !p.type).length, // Backward compatibility
+      peopleCount: people.filter(p => p.type === 'person' || !p.type).length,
       collectionCount: people.filter(p => p.type === 'collection' || p.type === 'company').length,
-      movieCount: selectedMovies.length,
-      totalRoles: people.reduce((acc, person) => acc + (person.roles?.length || 0), 0)
+      movieCount: selectedMovies.length, // Deduplicated count
+      rawMovieCount: rawSelectedMovies.length, // Total selections
+      duplicatesRemoved: rawSelectedMovies.length - selectedMovies.length,
+      totalRoles: people.reduce((acc, person) => acc + (person.roles?.length || 0), 0),
+      deduplicationRate: rawSelectedMovies.length > 0 
+        ? ((rawSelectedMovies.length - selectedMovies.length) / rawSelectedMovies.length * 100).toFixed(1)
+        : 0
     };
     setUsageStats(stats);
     
-    // Trigger movie count update
+    // Trigger movie count update with deduplicated count
     onMovieCountChange?.(selectedMovies.length);
-  }, [people, selectedMovies, onMovieCountChange]);
+  }, [people, selectedMovies, rawSelectedMovies, onMovieCountChange]);
 
   const handleManualSync = async () => {
     await userManagement.generateRssUrl(
       userId,
       tenantSecret,
-      selectedMovies,
+      selectedMovies, // Use deduplicated movies for RSS
       people,
       setRssUrl,
       setSuccess,
@@ -59,10 +65,16 @@ export default function ManageView({
   const handleExportData = async () => {
     try {
       const exportData = {
-        version: '2.0',
+        version: '2.1', // Updated version for deduplication support
         exportDate: new Date().toISOString(),
         people,
-        selectedMovies,
+        selectedMovies, // Deduplicated movies
+        rawSelectedMovies, // All selections for reference
+        deduplicationStats: {
+          totalSelections: rawSelectedMovies.length,
+          uniqueMovies: selectedMovies.length,
+          duplicatesRemoved: usageStats?.duplicatesRemoved || 0
+        },
         settings: {
           tmdbKey: localStorage.getItem('tmdbKey'),
           userId,
@@ -86,7 +98,9 @@ export default function ManageView({
       setSuccess('Collection exported successfully!');
       trackEvent('data_exported', {
         movieCount: selectedMovies.length,
-        peopleCount: people.length
+        rawMovieCount: rawSelectedMovies.length,
+        peopleCount: people.length,
+        duplicatesRemoved: usageStats?.duplicatesRemoved || 0
       });
     } catch (error) {
       setError('Export failed: ' + error.message);
@@ -121,10 +135,11 @@ export default function ManageView({
       
       setSuccess(`Successfully imported ${importData.people.length} items!`);
       trackEvent('data_imported', {
-        importedItems: importData.people.length
+        importedItems: importData.people.length,
+        version: importData.version || '1.0'
       });
 
-      // Trigger auto-sync after import
+      // Trigger auto-sync after import with deduplication
       if (userId && tenantSecret && setRssUrl) {
         const allSelectedMovies = mergedPeople.flatMap(person =>
           person.roles?.flatMap(role =>
@@ -250,12 +265,6 @@ export default function ManageView({
     { key: 'data', label: '⚙️ Data Management', count: null }
   ];
 
-  const getSelectMoviesLabel = () => {
-    if (person.type === 'collection') return 'series';
-    if (person.type === 'company') return 'studio';
-    return currentRole.type;
-  };
-
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       {/* Header with Action Buttons */}
@@ -303,24 +312,45 @@ export default function ManageView({
           </div>
         </div>
 
-        {/* Quick Stats */}
+        {/* Enhanced Stats with Deduplication Info */}
         {usageStats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div className="text-center p-3 bg-slate-700/30 rounded-lg">
               <div className="text-2xl font-bold text-purple-400">{usageStats.movieCount}</div>
-              <div className="text-sm text-slate-400">Movies Selected</div>
+              <div className="text-sm text-slate-400">Unique Movies</div>
+              <div className="text-xs text-purple-300">In RSS Feed</div>
             </div>
             <div className="text-center p-3 bg-slate-700/30 rounded-lg">
-              <div className="text-2xl font-bold text-blue-400">{people.length}</div>
-              <div className="text-sm text-slate-400">Total Sources</div>
+              <div className="text-2xl font-bold text-blue-400">{usageStats.rawMovieCount}</div>
+              <div className="text-sm text-slate-400">Total Selections</div>
+              <div className="text-xs text-blue-300">All Choices</div>
             </div>
             <div className="text-center p-3 bg-slate-700/30 rounded-lg">
-              <div className="text-2xl font-bold text-green-400">{usageStats.peopleCount}</div>
-              <div className="text-sm text-slate-400">People</div>
+              <div className="text-2xl font-bold text-green-400">{people.length}</div>
+              <div className="text-sm text-slate-400">Sources</div>
+              <div className="text-xs text-green-300">People + Studios</div>
             </div>
             <div className="text-center p-3 bg-slate-700/30 rounded-lg">
-              <div className="text-2xl font-bold text-yellow-400">{usageStats.collectionCount}</div>
-              <div className="text-sm text-slate-400">Series & Studios</div>
+              <div className="text-2xl font-bold text-yellow-400">{usageStats.duplicatesRemoved}</div>
+              <div className="text-sm text-slate-400">Duplicates</div>
+              <div className="text-xs text-yellow-300">Removed</div>
+            </div>
+            <div className="text-center p-3 bg-slate-700/30 rounded-lg">
+              <div className="text-2xl font-bold text-orange-400">{usageStats.deduplicationRate}%</div>
+              <div className="text-sm text-slate-400">Efficiency</div>
+              <div className="text-xs text-orange-300">Deduplication</div>
+            </div>
+          </div>
+        )}
+
+        {/* Deduplication Summary */}
+        {usageStats && usageStats.duplicatesRemoved > 0 && (
+          <div className="mt-4 p-3 bg-green-600/10 border border-green-500/30 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <span className="text-green-300 text-sm">🔄</span>
+              <span className="text-green-200 text-sm">
+                <strong>Smart deduplication:</strong> Removed {usageStats.duplicatesRemoved} duplicate movie{usageStats.duplicatesRemoved !== 1 ? 's' : ''} from your RSS feed while keeping them visible under each actor/director for clarity.
+              </span>
             </div>
           </div>
         )}
@@ -334,7 +364,7 @@ export default function ManageView({
             <div>
               <h4 className="font-medium text-white mb-2">Export Collection</h4>
               <p className="text-sm text-slate-400 mb-3">
-                Download your complete collection as a JSON file for backup or sharing.
+                Download your complete collection with deduplication stats as a JSON file for backup or sharing.
               </p>
               <button
                 onClick={handleExportData}
@@ -346,7 +376,7 @@ export default function ManageView({
             <div>
               <h4 className="font-medium text-white mb-2">Import Collection</h4>
               <p className="text-sm text-slate-400 mb-3">
-                Import from a previous export. Data will be merged and auto-synced.
+                Import from a previous export. Data will be merged and auto-synced with deduplication.
               </p>
               <input
                 type="file"
@@ -390,6 +420,7 @@ export default function ManageView({
                 <PersonManager
                   key={person.id}
                   person={person}
+                  allPeople={people} // Pass all people for duplicate detection
                   onRemovePerson={() => handleRemovePerson(person.id)}
                   onRemoveRole={(roleType) => handleRemoveRole(person.id, roleType)}
                   onToggleMovie={(roleType, movieId) => handleToggleMovie(person.id, roleType, movieId)}
@@ -432,8 +463,20 @@ export default function ManageView({
                     <h4 className="font-medium text-white mb-3">Collection Overview</h4>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Total Movies:</span>
+                        <span className="text-slate-400">Unique Movies (RSS):</span>
                         <span className="text-white font-medium">{usageStats.movieCount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Total Selections:</span>
+                        <span className="text-white font-medium">{usageStats.rawMovieCount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Duplicates Removed:</span>
+                        <span className="text-yellow-400 font-medium">{usageStats.duplicatesRemoved}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Deduplication Rate:</span>
+                        <span className="text-green-400 font-medium">{usageStats.deduplicationRate}%</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400">Total Sources:</span>
@@ -444,12 +487,8 @@ export default function ManageView({
                         <span className="text-white font-medium">{usageStats.peopleCount}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Collections:</span>
+                        <span className="text-slate-400">Collections/Studios:</span>
                         <span className="text-white font-medium">{usageStats.collectionCount}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Total Roles:</span>
-                        <span className="text-white font-medium">{usageStats.totalRoles}</span>
                       </div>
                     </div>
                   </div>
@@ -459,11 +498,15 @@ export default function ManageView({
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-slate-400">Data Version:</span>
-                        <span className="text-white font-medium">2.0</span>
+                        <span className="text-white font-medium">2.1 (with deduplication)</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400">Auto-sync:</span>
                         <span className="text-green-400 font-medium">Enabled</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Deduplication:</span>
+                        <span className="text-green-400 font-medium">Active</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400">Last Updated:</span>
@@ -481,7 +524,7 @@ export default function ManageView({
               )}
             </div>
 
-            {/* RSS Feed Status */}
+            {/* Enhanced RSS Feed Status */}
             <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
               <h3 className="text-lg font-bold text-white mb-4">📡 RSS Feed Status</h3>
               <div className="space-y-3">
@@ -492,8 +535,12 @@ export default function ManageView({
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Movies in Feed:</span>
+                  <span className="text-slate-400">Unique Movies in Feed:</span>
                   <span className="text-white font-medium">{usageStats?.movieCount || 0}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Duplicates Prevented:</span>
+                  <span className="text-yellow-400 font-medium">{usageStats?.duplicatesRemoved || 0}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">Auto-sync Status:</span>
@@ -503,7 +550,7 @@ export default function ManageView({
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">Last Updated:</span>
-                  <span className="text-white font-medium">Live (auto-sync)</span>
+                  <span className="text-white font-medium">Live (auto-sync + deduplication)</span>
                 </div>
               </div>
               
@@ -511,6 +558,14 @@ export default function ManageView({
                 <div className="mt-4 p-3 bg-yellow-600/20 border border-yellow-500 rounded-lg">
                   <p className="text-yellow-200 text-sm">
                     💡 Click "Sync Now" above to generate your RSS URL for Radarr.
+                  </p>
+                </div>
+              )}
+
+              {usageStats && usageStats.duplicatesRemoved > 0 && (
+                <div className="mt-4 p-3 bg-green-600/20 border border-green-500 rounded-lg">
+                  <p className="text-green-200 text-sm">
+                    🎯 <strong>Efficiency boost:</strong> Your RSS feed contains {usageStats.movieCount} unique movies instead of {usageStats.rawMovieCount} total selections. Radarr will only download each movie once!
                   </p>
                 </div>
               )}
