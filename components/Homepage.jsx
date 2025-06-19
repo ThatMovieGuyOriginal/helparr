@@ -1,5 +1,5 @@
 // components/Homepage.jsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { trackEvent } from '../utils/analytics';
 import DemoView from './DemoView';
 import SetupView from './SetupView';
@@ -12,6 +12,8 @@ export default function Homepage() {
   const [tmdbKey, setTmdbKey] = useState('');
   const [tenantSecret, setTenantSecret] = useState('');
   const [rssUrl, setRssUrl] = useState('');
+  const [movieCount, setMovieCount] = useState(0);
+  const [autoSyncStatus, setAutoSyncStatus] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -44,7 +46,43 @@ export default function Homepage() {
     } else {
       trackEvent('new_user', { userId: id.substring(0, 8) + '***' });
     }
+
+    // Initialize movie count from localStorage
+    updateMovieCountFromStorage();
+
+    // Listen for RSS access updates from the API
+    const handleStorageChange = (e) => {
+      if (e.key === 'lastRSSAccess') {
+        // RSS was accessed, this can help with countdown calculation
+        console.log('RSS access detected for countdown calculation');
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
+
+  // Update movie count from localStorage
+  const updateMovieCountFromStorage = useCallback(() => {
+    try {
+      const savedMovies = localStorage.getItem('selectedMovies');
+      const count = savedMovies ? JSON.parse(savedMovies).length : 0;
+      setMovieCount(count);
+    } catch (error) {
+      console.warn('Failed to load movie count from storage:', error);
+      setMovieCount(0);
+    }
+  }, []);
+
+  // Handle movie count changes (called from auto-sync and manual operations)
+  const handleMovieCountChange = useCallback((newCount) => {
+    if (typeof newCount === 'number') {
+      setMovieCount(newCount);
+    } else {
+      // Fallback to reading from localStorage
+      updateMovieCountFromStorage();
+    }
+  }, [updateMovieCountFromStorage]);
 
   // Auto-clear messages
   useEffect(() => {
@@ -109,10 +147,13 @@ export default function Homepage() {
       setRssUrl(data.rssUrl);
       setView('app');
       
+      // Initialize movie count
+      setMovieCount(0);
+      
       // Show success message
       const message = data.returning 
         ? 'Welcome back! Your RSS URL is ready.'
-        : '🎉 Setup complete! Your RSS URL is ready. Add it to Radarr now.';
+        : '🎉 Setup complete! Your RSS URL is ready. Add actors/directors to see movies appear!';
       
       setSuccess(message);
       
@@ -141,7 +182,7 @@ export default function Homepage() {
     try {
       await navigator.clipboard.writeText(rssUrl);
       setCopySuccess(true);
-      trackEvent('rss_url_copied', { fromSetup: true });
+      trackEvent('rss_url_copied', { fromSetup: true, movieCount });
     } catch (err) {
       setError('Failed to copy URL to clipboard');
     }
@@ -153,25 +194,16 @@ export default function Homepage() {
     setSuccess('');
   };
 
-  // Get movie count for RSS bar
-  const getMovieCount = () => {
-    try {
-      const savedMovies = localStorage.getItem('selectedMovies');
-      return savedMovies ? JSON.parse(savedMovies).length : 0;
-    } catch {
-      return 0;
-    }
-  };
-
   return (
     <div className="min-h-screen bg-slate-900 text-white">
-      {/* Streamlined RSS URL Bar - Only show when user has RSS URL */}
+      {/* Enhanced RSS URL Bar - Only show when user has RSS URL */}
       {rssUrl && view === 'app' && (
         <RSSUrlBar 
           rssUrl={rssUrl}
           onCopy={copyRssUrl}
           copySuccess={copySuccess}
-          movieCount={getMovieCount()}
+          movieCount={movieCount}
+          autoSyncStatus={autoSyncStatus}
         />
       )}
 
@@ -182,7 +214,7 @@ export default function Homepage() {
             Auto-add movies to Radarr by actor or director
           </p>
           <p className="text-sm text-slate-400 mt-2">
-            Search → Select → Generate RSS → Done in 30 seconds
+            Search → Select → Auto-sync RSS → Done in 30 seconds
           </p>
         </header>
 
@@ -223,7 +255,8 @@ export default function Homepage() {
             tenantSecret={tenantSecret}
             rssUrl={rssUrl}
             setRssUrl={setRssUrl}
-            onMovieCountChange={() => {}} // RSS bar will read from localStorage
+            onMovieCountChange={handleMovieCountChange}
+            setAutoSyncStatus={setAutoSyncStatus}
           />
         )}
 
