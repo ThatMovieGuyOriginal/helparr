@@ -1,6 +1,7 @@
 // components/Homepage.jsx
 import { useState, useEffect, useCallback } from 'react';
 import { trackEvent } from '../utils/analytics';
+import DataMigration from '../utils/dataMigration';
 import DemoView from './DemoView';
 import SetupView from './SetupView';
 import MainApp from './MainApp';
@@ -20,6 +21,9 @@ export default function Homepage() {
   const [copySuccess, setCopySuccess] = useState(false);
 
   useEffect(() => {
+    // Run data migration for backward compatibility
+    DataMigration.migrateUserData();
+    
     // Generate or retrieve persistent user ID
     let id = localStorage.getItem('userId');
     if (!id) {
