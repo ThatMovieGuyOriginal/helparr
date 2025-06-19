@@ -1,29 +1,153 @@
 // utils/tmdbClient.js
-// Rate-limited TMDb API client with queue management and 429 handling
-
 class TMDbClient {
   constructor() {
     this.requestQueue = [];
     this.isProcessing = false;
     this.lastRequestTime = 0;
-    this.minInterval = 25; // ~40 requests/second, safely under 50/sec limit
+    this.minInterval = 30; // ~33 requests/second, safely under 50/sec limit
+    this.activeStreams = new Map(); // Track active streaming operations
   }
 
   /**
-   * Queue a TMDb API request with automatic rate limiting and retry logic
-   * @param {string} url - Full TMDb API URL
-   * @param {number} retries - Number of retries for 429 errors
-   * @returns {Promise} - Resolves with TMDb response data
+   * Queue a single TMDb API request with automatic rate limiting and retry logic
    */
   async queueRequest(url, retries = 3) {
     return new Promise((resolve, reject) => {
-      this.requestQueue.push({ url, resolve, reject, retries });
+      this.requestQueue.push({ url, resolve, reject, retries, type: 'single' });
       this.processQueue();
     });
   }
 
   /**
-   * Process the request queue with rate limiting and error handling
+   * Start a streaming operation that loads all pages for a company
+   * @param {string} baseUrl - Base TMDb discover URL without page parameter
+   * @param {number} totalPages - Total pages to load
+   * @param {string} streamId - Unique identifier for this stream
+   * @param {Object} callbacks - Progress callbacks
+   */
+  async startStreamingLoad(baseUrl, totalPages, streamId, callbacks) {
+    const {
+      onProgress,
+      onMoviesBatch,
+      onRateLimit,
+      onComplete,
+      onError,
+      onCancel
+    } = callbacks;
+
+    // Initialize stream tracking
+    const streamInfo = {
+      id: streamId,
+      totalPages,
+      loadedPages: 0,
+      cancelled: false,
+      startTime: Date.now()
+    };
+    
+    this.activeStreams.set(streamId, streamInfo);
+
+    try {
+      console.log(`🎬 Starting streaming load for ${streamId}: ${totalPages} pages`);
+      
+      // Queue all pages (starting from page 2 since page 1 was already loaded)
+      for (let page = 2; page <= totalPages; page++) {
+        if (streamInfo.cancelled) {
+          onCancel?.();
+          return;
+        }
+
+        // Add streaming request to queue
+        this.requestQueue.push({
+          url: `${baseUrl}&page=${page}`,
+          resolve: (data) => this.handleStreamPage(data, streamId, page, callbacks),
+          reject: (error) => onError?.(error),
+          retries: 3,
+          type: 'streaming',
+          streamId,
+          page
+        });
+      }
+
+      // Start processing if not already running
+      this.processQueue();
+
+    } catch (error) {
+      console.error(`Streaming load failed for ${streamId}:`, error);
+      this.activeStreams.delete(streamId);
+      onError?.(error);
+    }
+  }
+
+  /**
+   * Handle a single page result from streaming operation
+   */
+  handleStreamPage(data, streamId, page, callbacks) {
+    const streamInfo = this.activeStreams.get(streamId);
+    if (!streamInfo || streamInfo.cancelled) {
+      return;
+    }
+
+    try {
+      // Extract and process movies from this page
+      const movies = (data.results || [])
+        .filter(movie => movie && movie.title && movie.release_date)
+        .map(movie => ({
+          id: movie.id,
+          title: movie.title,
+          imdb_id: null, // Will be enriched later
+          year: movie.release_date ? new Date(movie.release_date).getFullYear() : null,
+          poster_path: movie.poster_path,
+          overview: movie.overview,
+          vote_average: movie.vote_average || 0,
+          release_date: movie.release_date,
+          runtime: null,
+          genres: [],
+          selected: true // Pre-select for better UX
+        }));
+
+      // Update progress
+      streamInfo.loadedPages++;
+      const totalMovies = streamInfo.loadedPages * 20; // Approximate count
+      
+      // Notify callbacks
+      callbacks.onMoviesBatch?.(movies);
+      callbacks.onProgress?.(streamInfo.loadedPages, streamInfo.totalPages, totalMovies);
+
+      // Check if complete
+      if (streamInfo.loadedPages >= streamInfo.totalPages) {
+        console.log(`🎬 Streaming complete for ${streamId}: ${streamInfo.loadedPages} pages loaded`);
+        this.activeStreams.delete(streamId);
+        callbacks.onComplete?.();
+      }
+
+    } catch (error) {
+      console.error(`Error processing stream page ${page} for ${streamId}:`, error);
+      callbacks.onError?.(error);
+    }
+  }
+
+  /**
+   * Cancel an active streaming operation
+   */
+  cancelStream(streamId) {
+    const streamInfo = this.activeStreams.get(streamId);
+    if (streamInfo) {
+      streamInfo.cancelled = true;
+      console.log(`🎬 Cancelled streaming load for ${streamId}`);
+      
+      // Remove pending requests for this stream from queue
+      this.requestQueue = this.requestQueue.filter(req => 
+        req.type !== 'streaming' || req.streamId !== streamId
+      );
+      
+      this.activeStreams.delete(streamId);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Enhanced queue processing with rate limit handling and streaming support
    */
   async processQueue() {
     if (this.isProcessing || this.requestQueue.length === 0) return;
@@ -31,13 +155,22 @@ class TMDbClient {
     this.isProcessing = true;
     
     while (this.requestQueue.length > 0) {
-      const { url, resolve, reject, retries } = this.requestQueue.shift();
+      const request = this.requestQueue.shift();
+      const { url, resolve, reject, retries, type, streamId } = request;
+      
+      // Check if streaming request was cancelled
+      if (type === 'streaming' && streamId) {
+        const streamInfo = this.activeStreams.get(streamId);
+        if (!streamInfo || streamInfo.cancelled) {
+          continue; // Skip cancelled requests
+        }
+      }
       
       try {
         await this.enforceRateLimit();
         const response = await fetch(url);
         
-        // Handle 429 rate limit errors with exponential backoff
+        // Handle 429 rate limit errors with user-friendly messaging
         if (response.status === 429) {
           const retryAfter = response.headers.get('Retry-After');
           const backoffMs = retryAfter 
@@ -45,10 +178,19 @@ class TMDbClient {
             : Math.min(1000 * Math.pow(2, 4 - retries), 8000);
           
           console.warn(`TMDb rate limit hit, backing off for ${backoffMs}ms`);
+          
+          // Notify streaming operations about rate limit
+          if (type === 'streaming' && streamId) {
+            const streamInfo = this.activeStreams.get(streamId);
+            if (streamInfo && request.callbacks?.onRateLimit) {
+              request.callbacks.onRateLimit(Math.ceil(backoffMs / 1000));
+            }
+          }
+          
           await new Promise(resolve => setTimeout(resolve, backoffMs));
           
           if (retries > 0) {
-            this.requestQueue.unshift({ url, resolve, reject, retries: retries - 1 });
+            this.requestQueue.unshift({ ...request, retries: retries - 1 });
             continue;
           } else {
             throw new Error('TMDb rate limit exceeded - please try again later');
@@ -87,24 +229,33 @@ class TMDbClient {
   }
 
   /**
-   * Get current queue status for debugging
+   * Get current status including active streams
    */
-  getQueueStatus() {
+  getStatus() {
     return {
       queueLength: this.requestQueue.length,
       isProcessing: this.isProcessing,
+      activeStreams: Array.from(this.activeStreams.entries()).map(([id, info]) => ({
+        id,
+        progress: `${info.loadedPages}/${info.totalPages}`,
+        cancelled: info.cancelled
+      })),
       lastRequestTime: this.lastRequestTime
     };
   }
 
   /**
-   * Clear the request queue (for cleanup)
+   * Clear all queues and cancel all streams (for cleanup)
    */
-  clearQueue() {
+  clearAll() {
     this.requestQueue.forEach(({ reject }) => {
-      reject(new Error('Request queue cleared'));
+      reject(new Error('TMDb client cleared'));
     });
     this.requestQueue = [];
+    this.activeStreams.forEach((streamInfo, streamId) => {
+      streamInfo.cancelled = true;
+    });
+    this.activeStreams.clear();
     this.isProcessing = false;
   }
 }
