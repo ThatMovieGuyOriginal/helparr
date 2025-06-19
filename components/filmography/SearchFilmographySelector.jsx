@@ -7,7 +7,8 @@ export default function SearchFilmographySelector({
   onSelectAll, 
   onSave, 
   personName, 
-  role 
+  role,
+  sourceType = 'person'
 }) {
   const [searchFilter, setSearchFilter] = useState('');
 
@@ -27,6 +28,14 @@ export default function SearchFilmographySelector({
     if (canSave) {
       const selectedMovies = movies.filter(movie => movie.selected);
       onSave(selectedMovies);
+    }
+  };
+
+  const getSourceTypeLabel = () => {
+    switch (sourceType) {
+      case 'collection': return 'Series';
+      case 'company': return 'Studio';
+      default: return 'Person';
     }
   };
 
@@ -119,16 +128,21 @@ export default function SearchFilmographySelector({
         ))}
       </div>
 
-      {/* Save button */}
+      {/* Save button with source-aware text */}
       <div className="flex justify-end">
         <button
           onClick={handleSave}
           disabled={!canSave}
           className="px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200"
         >
-          Add {selectedCount} Movies to List
+          ⚡ Add {selectedCount} Movies from {getSourceTypeLabel()} (Auto-sync)
         </button>
       </div>
+      {canSave && (
+        <p className="text-xs text-slate-400 mt-2 text-right">
+          Movies will auto-sync to RSS feed after 5 seconds
+        </p>
+      )}
     </div>
   );
 }
