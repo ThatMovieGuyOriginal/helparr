@@ -1,45 +1,65 @@
 // app/api/admin/analytics/route.js
 import { getRedis } from '../../../../lib/kv';
 
-// Production analytics - reads from actual system data
+const startTime = Date.now();
+
 export async function GET() {
   try {
     const redis = await getRedis();
     const today = new Date().toISOString().split('T')[0];
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     
-    // Get real metrics from Redis and system
+    // Get core metrics from Redis
     const [
       totalTenants,
-      activeTenants,
-      totalMoviesInFeeds,
-      avgMoviesPerUser,
-      recentSearches,
-      systemHealth
+      tenantsWithMovies,
+      activelyUsedFeeds,
+      systemHealth,
+      totalMoviesInSystem
     ] = await Promise.all([
       getTotalTenants(redis),
-      getActiveTenants(redis),
-      getTotalMoviesInFeeds(redis),
-      getAverageMoviesPerUser(redis),
-      getRecentSearchMetrics(redis),
-      getSystemHealth(redis)
+      getTenantsWithMovies(redis),
+      getActivelyUsedFeeds(redis),
+      getSystemHealth(redis),
+      getTotalMoviesInSystem(redis)
     ]);
 
-    // Calculate conversion funnel from real data
+    // Calculate simple but meaningful conversion funnel
     const funnel = {
       totalUsers: totalTenants,
-      activeUsers: activeTenants,
-      usersWithMovies: await getUsersWithMovies(redis),
-      usersWithRSS: await getUsersWithRSS(redis),
-      avgMoviesPerActiveUser: avgMoviesPerUser
+      usersWithMovies: tenantsWithMovies,
+      activelyUsedFeeds: activelyUsedFeeds,
+      conversionRate: totalTenants > 0 ? ((tenantsWithMovies / totalTenants) * 100).toFixed(1) : '0'
     };
 
-    // Real performance metrics
+    // Calculate simple drop-off analysis
+    const dropoffAnalysis = [
+      {
+        stage: 'Setup to First Movies',
+        lost: totalTenants - tenantsWithMovies,
+        dropRate: totalTenants > 0 ? (((totalTenants - tenantsWithMovies) / totalTenants) * 100).toFixed(1) : '0'
+      },
+      {
+        stage: 'Movies to Active RSS',
+        lost: tenantsWithMovies - activelyUsedFeeds,
+        dropRate: tenantsWithMovies > 0 ? (((tenantsWithMovies - activelyUsedFeeds) / tenantsWithMovies) * 100).toFixed(1) : '0'
+      }
+    ];
+
+    // Core usage metrics
+    const usage = {
+      totalUsers: totalTenants,
+      usersWithMovies: tenantsWithMovies,
+      activelyUsedFeeds: activelyUsedFeeds,
+      totalMoviesInSystem: totalMoviesInSystem,
+      avgMoviesPerUser: tenantsWithMovies > 0 ? Math.round(totalMoviesInSystem / tenantsWithMovies) : 0
+    };
+
+    // System performance metrics
     const performance = {
-      avgResponseTime: await getAverageResponseTime(redis),
-      cacheHitRate: await getCacheHitRate(redis),
-      errorRate: await getErrorRate(redis),
-      uptime: getSystemUptime()
+      systemUptime: Math.floor((Date.now() - startTime) / 1000),
+      redisStatus: systemHealth.services.redis,
+      apiStatus: 'operational'
     };
 
     const data = {
@@ -49,16 +69,11 @@ export async function GET() {
         days: 30
       },
       funnel,
+      dropoffAnalysis,
+      usage,
       performance,
-      usage: {
-        totalMoviesInSystem: totalMoviesInFeeds,
-        searchesLast24h: recentSearches.day,
-        searchesLast7d: recentSearches.week,
-        newUsersLast7d: await getNewUsers(redis, 7),
-        activeUsersLast7d: await getActiveUsers(redis, 7)
-      },
       systemHealth,
-      insights: generateInsights(funnel, performance, totalMoviesInFeeds)
+      insights: generateInsights(funnel, dropoffAnalysis, usage)
     };
     
     return Response.json(data);
@@ -66,7 +81,7 @@ export async function GET() {
   } catch (error) {
     console.error('Analytics API Error:', error);
     
-    // Fallback to basic metrics if Redis is unavailable
+    // Fallback to basic system info if Redis fails
     const fallbackData = {
       dateRange: {
         start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -75,23 +90,22 @@ export async function GET() {
       },
       funnel: {
         totalUsers: 0,
-        activeUsers: 0,
         usersWithMovies: 0,
-        usersWithRSS: 0,
-        avgMoviesPerActiveUser: 0
+        activelyUsedFeeds: 0,
+        conversionRate: '0'
+      },
+      dropoffAnalysis: [],
+      usage: {
+        totalUsers: 0,
+        usersWithMovies: 0,
+        activelyUsedFeeds: 0,
+        totalMoviesInSystem: 0,
+        avgMoviesPerUser: 0
       },
       performance: {
-        avgResponseTime: 'Unknown',
-        cacheHitRate: 'Unknown',
-        errorRate: 'Unknown',
-        uptime: getSystemUptime()
-      },
-      usage: {
-        totalMoviesInSystem: 0,
-        searchesLast24h: 0,
-        searchesLast7d: 0,
-        newUsersLast7d: 0,
-        activeUsersLast7d: 0
+        systemUptime: Math.floor((Date.now() - startTime) / 1000),
+        redisStatus: 'unavailable',
+        apiStatus: 'degraded'
       },
       systemHealth: {
         status: 'degraded',
@@ -108,7 +122,7 @@ export async function GET() {
   }
 }
 
-// Helper functions for real metrics collection
+// Get total number of tenants
 async function getTotalTenants(redis) {
   try {
     const keys = await redis.keys('tenant:*');
@@ -119,20 +133,20 @@ async function getTotalTenants(redis) {
   }
 }
 
-async function getActiveTenants(redis) {
+// Get tenants who have actually added movies to their collection
+async function getTenantsWithMovies(redis) {
   try {
     const keys = await redis.keys('tenant:*');
-    let activeCount = 0;
-    const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    let tenantsWithMovies = 0;
     
-    for (const key of keys.slice(0, 100)) { // Limit for performance
+    for (const key of keys.slice(0, 100)) {
       try {
         const data = await redis.get(key);
         if (data) {
           const tenant = JSON.parse(data);
-          const lastLogin = new Date(tenant.lastLogin || tenant.createdAt || 0);
-          if (lastLogin.getTime() > sevenDaysAgo) {
-            activeCount++;
+          const movieCount = parseInt(tenant.movieCount || '0', 10);
+          if (movieCount > 0) {
+            tenantsWithMovies++;
           }
         }
       } catch (err) {
@@ -140,24 +154,70 @@ async function getActiveTenants(redis) {
       }
     }
     
-    return activeCount;
+    return tenantsWithMovies;
   } catch (error) {
-    console.warn('Failed to get active tenants:', error.message);
+    console.warn('Failed to get tenants with movies:', error.message);
     return 0;
   }
 }
 
-async function getTotalMoviesInFeeds(redis) {
+// Calculate actively used RSS feeds based on real engagement
+async function getActivelyUsedFeeds(redis) {
   try {
     const keys = await redis.keys('tenant:*');
-    let totalMovies = 0;
+    let activeFeeds = 0;
+    const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
     
-    for (const key of keys.slice(0, 50)) { // Sample for performance
+    for (const key of keys.slice(0, 100)) {
       try {
         const data = await redis.get(key);
         if (data) {
           const tenant = JSON.parse(data);
-          const movieCount = tenant.movieCount || 0;
+          
+          // Check if feed is actively used
+          if (isFeedActivelyUsed(tenant, thirtyDaysAgo)) {
+            activeFeeds++;
+          }
+        }
+      } catch (err) {
+        // Skip invalid entries
+      }
+    }
+    
+    return activeFeeds;
+  } catch (error) {
+    console.warn('Failed to get actively used feeds:', error.message);
+    return 0;
+  }
+}
+
+// Smart logic to determine if RSS feed is actively used
+function isFeedActivelyUsed(tenant, thirtyDaysAgo) {
+  // Must have movies in the feed
+  const hasMovies = (tenant.movieCount || 0) > 0;
+  
+  // Must have recent user activity (not just automated RSS polling)
+  const lastSync = new Date(tenant.lastSync || 0);
+  const recentUserActivity = lastSync.getTime() > thirtyDaysAgo;
+  
+  // Must have RSS capability
+  const hasRssCapability = !!tenant.tenantSecret;
+  
+  return hasMovies && recentUserActivity && hasRssCapability;
+}
+
+// Get total movies across all active collections
+async function getTotalMoviesInSystem(redis) {
+  try {
+    const keys = await redis.keys('tenant:*');
+    let totalMovies = 0;
+    
+    for (const key of keys.slice(0, 100)) {
+      try {
+        const data = await redis.get(key);
+        if (data) {
+          const tenant = JSON.parse(data);
+          const movieCount = parseInt(tenant.movieCount || '0', 10);
           totalMovies += movieCount;
         }
       } catch (err) {
@@ -172,82 +232,7 @@ async function getTotalMoviesInFeeds(redis) {
   }
 }
 
-async function getAverageMoviesPerUser(redis) {
-  try {
-    const totalMovies = await getTotalMoviesInFeeds(redis);
-    const activeUsers = await getActiveTenants(redis);
-    return activeUsers > 0 ? Math.round(totalMovies / activeUsers) : 0;
-  } catch (error) {
-    console.warn('Failed to calculate average movies per user:', error.message);
-    return 0;
-  }
-}
-
-async function getUsersWithMovies(redis) {
-  try {
-    const keys = await redis.keys('tenant:*');
-    let usersWithMovies = 0;
-    
-    for (const key of keys.slice(0, 100)) {
-      try {
-        const data = await redis.get(key);
-        if (data) {
-          const tenant = JSON.parse(data);
-          if ((tenant.movieCount || 0) > 0) {
-            usersWithMovies++;
-          }
-        }
-      } catch (err) {
-        // Skip invalid entries
-      }
-    }
-    
-    return usersWithMovies;
-  } catch (error) {
-    console.warn('Failed to get users with movies:', error.message);
-    return 0;
-  }
-}
-
-async function getUsersWithRSS(redis) {
-  try {
-    const keys = await redis.keys('tenant:*');
-    let usersWithRSS = 0;
-    
-    for (const key of keys.slice(0, 100)) {
-      try {
-        const data = await redis.get(key);
-        if (data) {
-          const tenant = JSON.parse(data);
-          if (tenant.tenantSecret) { // Has RSS capability
-            usersWithRSS++;
-          }
-        }
-      } catch (err) {
-        // Skip invalid entries
-      }
-    }
-    
-    return usersWithRSS;
-  } catch (error) {
-    console.warn('Failed to get users with RSS:', error.message);
-    return 0;
-  }
-}
-
-async function getRecentSearchMetrics(redis) {
-  try {
-    // In production, you'd track searches in Redis with timestamps
-    // For now, return basic metrics
-    return {
-      day: await getMetricCount(redis, 'searches:today'),
-      week: await getMetricCount(redis, 'searches:week')
-    };
-  } catch (error) {
-    return { day: 0, week: 0 };
-  }
-}
-
+// Check system health
 async function getSystemHealth(redis) {
   try {
     await redis.ping();
@@ -274,139 +259,40 @@ async function getSystemHealth(redis) {
   }
 }
 
-async function getAverageResponseTime(redis) {
-  try {
-    const start = Date.now();
-    await redis.ping();
-    const end = Date.now();
-    return `${end - start}ms`;
-  } catch (error) {
-    return 'Unknown';
-  }
-}
-
-async function getCacheHitRate(redis) {
-  try {
-    const info = await redis.info('stats');
-    // Parse Redis stats for cache hit rate if available
-    return 'Not tracked'; // Implement if needed
-  } catch (error) {
-    return 'Unknown';
-  }
-}
-
-async function getErrorRate(redis) {
-  try {
-    const errorCount = await getMetricCount(redis, 'errors:today');
-    const requestCount = await getMetricCount(redis, 'requests:today');
-    if (requestCount > 0) {
-      return `${((errorCount / requestCount) * 100).toFixed(2)}%`;
-    }
-    return '0%';
-  } catch (error) {
-    return 'Unknown';
-  }
-}
-
-function getSystemUptime() {
-  return Math.floor(process.uptime());
-}
-
-async function getNewUsers(redis, days) {
-  try {
-    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
-    const keys = await redis.keys('tenant:*');
-    let newUsers = 0;
-    
-    for (const key of keys.slice(0, 100)) {
-      try {
-        const data = await redis.get(key);
-        if (data) {
-          const tenant = JSON.parse(data);
-          const created = new Date(tenant.createdAt || 0);
-          if (created.getTime() > cutoff) {
-            newUsers++;
-          }
-        }
-      } catch (err) {
-        // Skip invalid entries
-      }
-    }
-    
-    return newUsers;
-  } catch (error) {
-    return 0;
-  }
-}
-
-async function getActiveUsers(redis, days) {
-  try {
-    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
-    const keys = await redis.keys('tenant:*');
-    let activeUsers = 0;
-    
-    for (const key of keys.slice(0, 100)) {
-      try {
-        const data = await redis.get(key);
-        if (data) {
-          const tenant = JSON.parse(data);
-          const lastActive = new Date(tenant.lastSync || tenant.lastLogin || 0);
-          if (lastActive.getTime() > cutoff) {
-            activeUsers++;
-          }
-        }
-      } catch (err) {
-        // Skip invalid entries
-      }
-    }
-    
-    return activeUsers;
-  } catch (error) {
-    return 0;
-  }
-}
-
-async function getMetricCount(redis, key) {
-  try {
-    const count = await redis.get(key);
-    return parseInt(count || '0', 10);
-  } catch (error) {
-    return 0;
-  }
-}
-
-function generateInsights(funnel, performance, totalMovies) {
+// Generate actionable insights based on data
+function generateInsights(funnel, dropoffAnalysis, usage) {
   const insights = [];
   
-  // Conversion insights
-  if (funnel.totalUsers > 0) {
-    const movieConversion = ((funnel.usersWithMovies / funnel.totalUsers) * 100).toFixed(1);
-    insights.push(`${movieConversion}% of users have added movies to their collection`);
-    
-    if (funnel.usersWithMovies > 0) {
-      const avgMovies = Math.round(totalMovies / funnel.usersWithMovies);
-      insights.push(`Average user adds ${avgMovies} movies to their collection`);
-    }
+  if (funnel.totalUsers === 0) {
+    insights.push('No users yet - system ready for production traffic');
+    return insights;
   }
   
-  // Performance insights
-  if (performance.avgResponseTime !== 'Unknown') {
-    const responseMs = parseInt(performance.avgResponseTime);
-    if (responseMs > 1000) {
-      insights.push('⚠️ Response times are slower than optimal - consider optimization');
-    } else if (responseMs < 200) {
-      insights.push('✅ Excellent response times - system performing well');
-    }
+  // Conversion insights
+  const conversionRate = parseFloat(funnel.conversionRate);
+  if (conversionRate < 50) {
+    insights.push(`${conversionRate}% setup completion rate - consider improving onboarding`);
+  } else {
+    insights.push(`${conversionRate}% setup completion rate - good user conversion`);
+  }
+  
+  // RSS usage insights
+  const rssAdoptionRate = funnel.usersWithMovies > 0 
+    ? ((funnel.activelyUsedFeeds / funnel.usersWithMovies) * 100).toFixed(1)
+    : '0';
+  
+  if (parseFloat(rssAdoptionRate) < 70) {
+    insights.push(`${rssAdoptionRate}% of users with movies have active RSS feeds - focus on RSS setup guidance`);
+  } else {
+    insights.push(`${rssAdoptionRate}% RSS adoption rate - excellent user engagement`);
   }
   
   // Usage insights
-  if (funnel.totalUsers === 0) {
-    insights.push('No users yet - system ready for production traffic');
-  } else if (funnel.activeUsers < funnel.totalUsers * 0.3) {
-    insights.push('Low user retention - consider improving onboarding experience');
+  if (usage.avgMoviesPerUser > 0) {
+    insights.push(`Users average ${usage.avgMoviesPerUser} movies in their collections`);
   }
   
-  return insights.length > 0 ? insights : ['System operational - analytics data limited'];
+  return insights.length > 0 ? insights : ['System operational - minimal usage data available'];
 }
 
 export const dynamic = 'force-dynamic';
