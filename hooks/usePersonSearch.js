@@ -4,11 +4,12 @@ import { generateSignature, trackEvent } from '../utils/analytics';
 
 export function usePersonSearch(userId = '', tenantSecret = '') {
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchType, setSearchType] = useState('people'); // 'people' | 'collections' | 'companies'
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
 
-  // Search for people with debouncing
-  const searchPeople = useCallback(async (query) => {
+  // Search for people, collections, or companies with debouncing
+  const searchContent = useCallback(async (query, type) => {
     if (!query || query.length < 2 || !userId || !tenantSecret) {
       setSearchResults([]);
       return;
@@ -16,21 +17,22 @@ export function usePersonSearch(userId = '', tenantSecret = '') {
 
     setSearchLoading(true);
     try {
-      trackEvent('search_people', { query: query.toLowerCase() });
+      trackEvent('search_content', { query: query.toLowerCase(), type });
       
-      const sig = await generateSignature(`search-people:${userId}`, tenantSecret);
-      const res = await fetch(`/api/search-people?sig=${sig}`, {
+      const sig = await generateSignature(`search-content:${userId}`, tenantSecret);
+      const res = await fetch(`/api/search-content?sig=${sig}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, query }),
+        body: JSON.stringify({ userId, query, searchType: type }),
       });
       
       const json = await res.json();
       if (res.ok) {
-        setSearchResults(json.people || []);
+        setSearchResults(json.results || []);
         trackEvent('search_results', { 
           query: query.toLowerCase(), 
-          resultCount: json.people?.length || 0 
+          type,
+          resultCount: json.results?.length || 0 
         });
       } else {
         throw new Error(json.error || 'Search failed');
@@ -56,21 +58,28 @@ export function usePersonSearch(userId = '', tenantSecret = '') {
     
     const timer = setTimeout(() => {
       if (searchQuery) {
-        searchPeople(searchQuery).catch(() => {
+        searchContent(searchQuery, searchType).catch(() => {
           // Error handling will be done in the component
         });
       }
     }, 300);
     
     return () => clearTimeout(timer);
-  }, [searchQuery, searchPeople, userId, tenantSecret]);
+  }, [searchQuery, searchType, searchContent, userId, tenantSecret]);
+
+  // Clear results when search type changes
+  useEffect(() => {
+    setSearchResults([]);
+  }, [searchType]);
 
   return {
     searchQuery,
     setSearchQuery,
+    searchType,
+    setSearchType,
     searchResults,
     setSearchResults,
     searchLoading,
-    searchPeople
+    searchContent
   };
 }
