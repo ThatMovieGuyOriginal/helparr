@@ -26,16 +26,29 @@ export async function POST(request) {
       return Response.json({ error: 'Invalid signature' }, { status: 403 });
     }
 
-    // Store selected movies and people data in Redis
+    // Calculate metrics for activity tracking
+    const movieCount = selectedMovies?.length || 0;
+    const personCount = people?.length || 0;
+    const currentTime = new Date().toISOString();
+
+    // Store selected movies and people data in Redis with enhanced tracking
     const updateData = {
       selectedMovies: JSON.stringify(selectedMovies || []),
       people: JSON.stringify(people || []),
-      movieCount: selectedMovies?.length || 0,
-      personCount: people?.length || 0,
-      lastSync: new Date().toISOString()
+      movieCount: movieCount,
+      personCount: personCount,
+      lastSync: currentTime,
+      // Track user engagement for analytics
+      lastActivity: currentTime,
+      totalSyncs: (tenant.totalSyncs || 0) + 1,
+      // Store activity history for better analytics (last 5 sync timestamps)
+      recentSyncs: [
+        currentTime,
+        ...(tenant.recentSyncs || []).slice(0, 4)
+      ]
     };
 
-    // Update tenant with movie list
+    // Update tenant with movie list and activity tracking
     await saveTenant(userId, {
       ...tenant,
       ...updateData
@@ -51,11 +64,17 @@ export async function POST(request) {
 
     const rssUrl = `${base}/api/rss/${userId}?sig=${rssSig}${bypassParam}`;
 
+    // Log activity for debugging
+    console.log(`User ${userId} synced: ${movieCount} movies, ${personCount} people/collections`);
+
     return Response.json({ 
       rssUrl,
       synced: true,
       movieCount: updateData.movieCount,
-      personCount: updateData.personCount
+      personCount: updateData.personCount,
+      message: movieCount > 0 
+        ? `Successfully synced ${movieCount} movies from ${personCount} sources`
+        : 'Collection synced - add movies to see them in your RSS feed'
     });
     
   } catch (error) {
