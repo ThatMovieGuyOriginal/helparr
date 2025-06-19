@@ -19,7 +19,10 @@ export default function ManageView({
   setSuccess,
   setError,
   handleNavigation,
-  onMovieCountChange
+  onMovieCountChange,
+  // Search view props passed through
+  sourceSearch,
+  filmography
 }) {
   const [activeTab, setActiveTab] = useState('collection');
   const [showExportImport, setShowExportImport] = useState(false);
@@ -29,8 +32,8 @@ export default function ManageView({
   // Load basic stats
   useEffect(() => {
     const stats = {
-      peopleCount: people.filter(p => p.type !== 'collection').length,
-      collectionCount: people.filter(p => p.type === 'collection').length,
+      peopleCount: people.filter(p => p.type === 'person' || !p.type).length, // Backward compatibility
+      collectionCount: people.filter(p => p.type === 'collection' || p.type === 'company').length,
       movieCount: selectedMovies.length,
       totalRoles: people.reduce((acc, person) => acc + (person.roles?.length || 0), 0)
     };
@@ -247,6 +250,12 @@ export default function ManageView({
     { key: 'data', label: '⚙️ Data Management', count: null }
   ];
 
+  const getSelectMoviesLabel = () => {
+    if (person.type === 'collection') return 'series';
+    if (person.type === 'company') return 'studio';
+    return currentRole.type;
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       {/* Header with Action Buttons */}
@@ -303,7 +312,7 @@ export default function ManageView({
             </div>
             <div className="text-center p-3 bg-slate-700/30 rounded-lg">
               <div className="text-2xl font-bold text-blue-400">{people.length}</div>
-              <div className="text-sm text-slate-400">Sources Added</div>
+              <div className="text-sm text-slate-400">Total Sources</div>
             </div>
             <div className="text-center p-3 bg-slate-700/30 rounded-lg">
               <div className="text-2xl font-bold text-green-400">{usageStats.peopleCount}</div>
@@ -311,7 +320,7 @@ export default function ManageView({
             </div>
             <div className="text-center p-3 bg-slate-700/30 rounded-lg">
               <div className="text-2xl font-bold text-yellow-400">{usageStats.collectionCount}</div>
-              <div className="text-sm text-slate-400">Collections</div>
+              <div className="text-sm text-slate-400">Series & Studios</div>
             </div>
           </div>
         )}
