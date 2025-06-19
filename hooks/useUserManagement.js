@@ -204,6 +204,89 @@ export function useUserManagement() {
     }
   };
 
+  // Add collection/company to list with auto-sync
+  const addCollectionToList = (selectedSource, moviesToAdd, people, setPeople, updateSelectedMovies, setSuccess, setError, setCurrentView, clearFilmography, userId, tenantSecret, setRssUrl, onMovieCountChange) => {
+    if (!selectedSource) return;
+    
+    if (moviesToAdd.length === 0) {
+      setError('Please select at least one movie to add.');
+      return;
+    }
+    
+    trackEvent('add_collection_to_list', { 
+      sourceName: selectedSource.name, 
+      sourceType: selectedSource.type,
+      movieCount: moviesToAdd.length 
+    });
+    
+    // Find existing collection or create new
+    const existingIndex = people.findIndex(p => p.id === selectedSource.id);
+    let updatedPeople;
+    
+    if (existingIndex >= 0) {
+      // Collection exists, update it
+      updatedPeople = [...people];
+      const existingCollection = updatedPeople[existingIndex];
+      
+      // Update the role (collections typically have one role)
+      const newRole = {
+        type: selectedSource.type === 'company' ? 'company' : 'collection',
+        movies: moviesToAdd,
+        addedAt: new Date().toISOString()
+      };
+      
+      existingCollection.roles = [newRole]; // Replace existing role
+    } else {
+      // New collection
+      const newCollection = {
+        id: selectedSource.id,
+        name: selectedSource.name,
+        poster_path: selectedSource.poster_path || selectedSource.logo_path,
+        type: 'collection',
+        collectionType: selectedSource.type, // 'collection' or 'company'
+        overview: selectedSource.overview || selectedSource.description,
+        roles: [{
+          type: selectedSource.type === 'company' ? 'company' : 'collection',
+          movies: moviesToAdd,
+          addedAt: new Date().toISOString()
+        }],
+        addedAt: new Date().toISOString()
+      };
+      updatedPeople = [...people, newCollection];
+    }
+    
+    setPeople(updatedPeople);
+    localStorage.setItem('people', JSON.stringify(updatedPeople));
+    
+    // Update selected movies
+    updateSelectedMovies(updatedPeople);
+    
+    const typeLabel = selectedSource.type === 'company' ? 'studio' : 'collection';
+    setSuccess(`Added ${moviesToAdd.length} movies from ${selectedSource.name} (${typeLabel})`);
+    clearFilmography();
+    setCurrentView();
+
+    // Trigger auto-sync after adding collection
+    const allSelectedMovies = updatedPeople.flatMap(person =>
+      person.roles?.flatMap(role =>
+        role.movies
+          ?.filter(movie => movie.selected !== false && movie.imdb_id)
+          .map(movie => ({
+            ...movie,
+            source: {
+              type: person.type === 'collection' ? 'collection' : 'person',
+              name: person.name,
+              role: role.type
+            }
+          })) || []
+      ) || []
+    );
+
+    if (userId && tenantSecret && setRssUrl) {
+      triggerAutoSync(userId, tenantSecret, allSelectedMovies, updatedPeople, setRssUrl, setSuccess, setError, onMovieCountChange);
+    }
+  };
+
   // Remove person/collection entirely with auto-sync
   const removePerson = (personId, people, setPeople, updateSelectedMovies, userId, tenantSecret, setRssUrl, setSuccess, setError, onMovieCountChange) => {
     const item = people.find(p => p.id === personId);
@@ -377,6 +460,7 @@ export function useUserManagement() {
     isAutoSyncing,
     confirmReset,
     addPersonToList,
+    addCollectionToList,
     removePerson,
     removeRole,
     toggleMovieForPerson,
