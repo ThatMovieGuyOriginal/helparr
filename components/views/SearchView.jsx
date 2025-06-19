@@ -1,4 +1,4 @@
-// components/views/SearchView.jsx - Enhanced with pagination support
+// components/views/SearchView.jsx
 import { useUserManagement } from '../../hooks/useUserManagement';
 import SearchFilmographySelector from '../filmography/SearchFilmographySelector';
 import { trackEvent } from '../../utils/analytics';
