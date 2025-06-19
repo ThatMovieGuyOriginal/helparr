@@ -18,11 +18,9 @@ export default function ManageView({
   setRssUrl,
   setSuccess,
   setError,
-  copySuccess,
-  copyRssUrl,
   handleNavigation
 }) {
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('collection'); // Start with collection tab
   const [showExportImport, setShowExportImport] = useState(false);
   const [usageStats, setUsageStats] = useState(null);
   const userManagement = useUserManagement();
@@ -161,29 +159,28 @@ export default function ManageView({
   };
 
   const tabs = [
-    { key: 'overview', label: '📊 Overview', count: null },
-    { key: 'collection', label: '🎬 Collection', count: people.length },
-    { key: 'data', label: '⚙️ Data', count: null }
+    { key: 'collection', label: '🎬 Your Collection', count: people.length },
+    { key: 'data', label: '⚙️ Data Management', count: null }
   ];
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      {/* Header */}
+      {/* Header with Action Buttons */}
       <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-bold text-white">Your Movie Collection</h2>
+          <h2 className="text-2xl font-bold text-white">Manage Your Movie Collection</h2>
           <div className="flex space-x-3">
             <button
               onClick={handleGenerateRssUrl}
               className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors duration-200"
             >
-              Update RSS Feed
+              📡 Update RSS Feed
             </button>
             <button
               onClick={() => setShowExportImport(!showExportImport)}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200"
             >
-              Import/Export
+              📦 Import/Export
             </button>
             <button
               onClick={handleConfirmReset}
@@ -197,19 +194,19 @@ export default function ManageView({
         {/* Quick Stats */}
         {usageStats && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="text-center">
+            <div className="text-center p-3 bg-slate-700/30 rounded-lg">
               <div className="text-2xl font-bold text-purple-400">{usageStats.movieCount}</div>
               <div className="text-sm text-slate-400">Movies Selected</div>
             </div>
-            <div className="text-center">
+            <div className="text-center p-3 bg-slate-700/30 rounded-lg">
               <div className="text-2xl font-bold text-blue-400">{people.length}</div>
               <div className="text-sm text-slate-400">Sources Added</div>
             </div>
-            <div className="text-center">
+            <div className="text-center p-3 bg-slate-700/30 rounded-lg">
               <div className="text-2xl font-bold text-green-400">{usageStats.peopleCount}</div>
               <div className="text-sm text-slate-400">People</div>
             </div>
-            <div className="text-center">
+            <div className="text-center p-3 bg-slate-700/30 rounded-lg">
               <div className="text-2xl font-bold text-yellow-400">{usageStats.collectionCount}</div>
               <div className="text-sm text-slate-400">Collections</div>
             </div>
@@ -250,7 +247,7 @@ export default function ManageView({
         </div>
       )}
 
-      {/* Tabs */}
+      {/* Simplified Tabs - Removed Overview tab since RSS is now at top */}
       <div className="flex space-x-1 bg-slate-800/30 rounded-lg p-1">
         {tabs.map(tab => (
           <button
@@ -274,48 +271,6 @@ export default function ManageView({
 
       {/* Tab Content */}
       <div className="min-h-[400px]">
-        {activeTab === 'overview' && (
-          <div className="space-y-6">
-            {/* Simple RSS URL Display - inlined */}
-            {rssUrl && (
-              <div className="bg-green-600/20 border border-green-500 rounded-xl p-6">
-                <h3 className="text-xl font-bold text-green-300 mb-3">✅ Your RSS URL</h3>
-                <p className="text-green-200 mb-4">
-                  This URL is permanent and never changes. Add it to Radarr once and you're done.
-                </p>
-                
-                <div className="bg-slate-800 rounded-lg p-3 mb-4">
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="text"
-                      value={rssUrl}
-                      readOnly
-                      className="flex-1 bg-transparent text-white text-sm font-mono"
-                    />
-                    <button
-                      onClick={copyRssUrl}
-                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded"
-                    >
-                      {copySuccess ? '✓ Copied!' : 'Copy'}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="text-sm text-green-200">
-                  <p className="font-semibold mb-2">📡 To add to Radarr:</p>
-                  <ol className="ml-6 space-y-1">
-                    <li>1. Go to Settings → Lists in Radarr</li>
-                    <li>2. Click "+" to add a new list</li>
-                    <li>3. Choose "RSS List"</li>
-                    <li>4. Paste the URL above and save</li>
-                    <li>5. Set sync interval to 60+ minutes</li>
-                  </ol>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         {activeTab === 'collection' && (
           <div className="space-y-4">
             {people.length > 0 ? (
@@ -341,12 +296,14 @@ export default function ManageView({
               ))
             ) : (
               <div className="text-center py-12 bg-slate-800/50 rounded-xl border border-slate-700">
-                <p className="text-slate-400 text-lg mb-4">No actors or directors added yet.</p>
+                <div className="text-6xl mb-4">🎬</div>
+                <h3 className="text-xl font-bold text-white mb-2">No Movies Added Yet</h3>
+                <p className="text-slate-400 text-lg mb-6">Start building your collection by searching for actors, directors, or movie collections.</p>
                 <button
                   onClick={() => handleNavigation('search')}
-                  className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors duration-200"
+                  className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors duration-200 font-medium"
                 >
-                  Start Adding Movies
+                  🔍 Start Adding Movies
                 </button>
               </div>
             )}
@@ -354,47 +311,88 @@ export default function ManageView({
         )}
 
         {activeTab === 'data' && (
-          <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
-            <h3 className="text-lg font-bold text-white mb-4">📊 Data Statistics</h3>
-            {usageStats && (
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <h4 className="font-medium text-white mb-3">Collection Overview</h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Total Movies:</span>
-                      <span className="text-white">{usageStats.movieCount}</span>
+          <div className="space-y-6">
+            <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
+              <h3 className="text-lg font-bold text-white mb-4">📊 Collection Statistics</h3>
+              {usageStats && (
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div>
+                    <h4 className="font-medium text-white mb-3">Collection Overview</h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Total Movies:</span>
+                        <span className="text-white font-medium">{usageStats.movieCount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Total Sources:</span>
+                        <span className="text-white font-medium">{people.length}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">People:</span>
+                        <span className="text-white font-medium">{usageStats.peopleCount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Collections:</span>
+                        <span className="text-white font-medium">{usageStats.collectionCount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Total Roles:</span>
+                        <span className="text-white font-medium">{usageStats.totalRoles}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Total Sources:</span>
-                      <span className="text-white">{people.length}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">People:</span>
-                      <span className="text-white">{usageStats.peopleCount}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Collections:</span>
-                      <span className="text-white">{usageStats.collectionCount}</span>
+                  </div>
+                  
+                  <div>
+                    <h4 className="font-medium text-white mb-3">System Info</h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Data Version:</span>
+                        <span className="text-white font-medium">2.0</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Last Updated:</span>
+                        <span className="text-white font-medium">{new Date().toLocaleDateString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">RSS URL Status:</span>
+                        <span className={`font-medium ${rssUrl ? 'text-green-400' : 'text-yellow-400'}`}>
+                          {rssUrl ? 'Active' : 'Not Generated'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
-                
-                <div>
-                  <h4 className="font-medium text-white mb-3">Storage Info</h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Data Version:</span>
-                      <span className="text-white">2.0</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Last Updated:</span>
-                      <span className="text-white">{new Date().toLocaleDateString()}</span>
-                    </div>
-                  </div>
+              )}
+            </div>
+
+            {/* RSS Feed Status */}
+            <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
+              <h3 className="text-lg font-bold text-white mb-4">📡 RSS Feed Status</h3>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Feed Status:</span>
+                  <span className={`font-medium ${rssUrl ? 'text-green-400' : 'text-yellow-400'}`}>
+                    {rssUrl ? '✅ Active' : '⚠️ Not Generated'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Movies in Feed:</span>
+                  <span className="text-white font-medium">{usageStats?.movieCount || 0}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Last Updated:</span>
+                  <span className="text-white font-medium">Live (auto-sync)</span>
                 </div>
               </div>
-            )}
+              
+              {!rssUrl && (
+                <div className="mt-4 p-3 bg-yellow-600/20 border border-yellow-500 rounded-lg">
+                  <p className="text-yellow-200 text-sm">
+                    💡 Click "Update RSS Feed" above to generate your RSS URL for Radarr.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
