@@ -1,20 +1,20 @@
 // components/views/AdminView.jsx
+
 import { useState, useEffect } from 'react';
 
 export function AdminView() {
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [timeRange, setTimeRange] = useState('7d');
 
   useEffect(() => {
     fetchAnalytics();
-  }, [timeRange]);
+  }, []);
 
   const fetchAnalytics = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/analytics?range=${timeRange}`);
+      const res = await fetch('/api/admin/analytics');
       const data = await res.json();
       
       if (res.ok) {
@@ -23,7 +23,7 @@ export function AdminView() {
         setError(data.error || 'Failed to fetch analytics');
       }
     } catch (err) {
-      setError('Failed to fetch analytics: ' + err.message);
+      setError('Failed to load analytics: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -31,11 +31,9 @@ export function AdminView() {
 
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto">
-        <div className="text-center py-12">
-          <div className="animate-spin w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p className="text-slate-400">Loading analytics...</p>
-        </div>
+      <div className="max-w-6xl mx-auto text-center py-12">
+        <div className="animate-spin w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+        <p className="text-slate-400">Loading business analytics...</p>
       </div>
     );
   }
@@ -56,268 +54,148 @@ export function AdminView() {
     );
   }
 
+  const { funnel, dropoffAnalysis, usage, popularSearches, performance } = analytics;
+
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-6xl mx-auto space-y-6">
       <div className="mb-8">
-        <h2 className="text-3xl font-bold text-white mb-4">📊 Helparr Analytics Dashboard</h2>
-        <div className="flex space-x-2">
-          {[
-            { key: '7d', label: 'Last 7 Days' },
-            { key: '30d', label: 'Last 30 Days' },
-            { key: '90d', label: 'Last 90 Days' },
-            { key: 'all', label: 'All Time' }
-          ].map(range => (
-            <button
-              key={range.key}
-              onClick={() => setTimeRange(range.key)}
-              className={`px-4 py-2 rounded-lg transition-colors duration-200 ${
-                timeRange === range.key
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+        <h2 className="text-3xl font-bold text-white mb-2">📊 Business Dashboard</h2>
+        <p className="text-slate-400">
+          Conversion funnel analysis for {analytics.dateRange.days} days 
+          ({analytics.dateRange.start} to {analytics.dateRange.end})
+        </p>
+      </div>
+
+      {/* Conversion Funnel - Primary Business Metric */}
+      <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+        <h3 className="text-xl font-bold text-white mb-6">🎯 Conversion Funnel</h3>
+        <div className="space-y-4">
+          {Object.entries(funnel).map(([stage, count], index) => {
+            const percentage = (count / funnel.pageViews) * 100;
+            const isDropoff = index > 0 && percentage < 50;
+            
+            return (
+              <div key={stage} className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-300 capitalize">
+                    {stage.replace(/([A-Z])/g, ' $1')}
+                  </span>
+                  <div className="text-right">
+                    <span className="text-white font-bold">{count.toLocaleString()}</span>
+                    <span className="text-slate-400 ml-2">({percentage.toFixed(1)}%)</span>
+                  </div>
+                </div>
+                <div className="w-full bg-slate-700 rounded-full h-3">
+                  <div 
+                    className={`h-3 rounded-full transition-all duration-500 ${
+                      isDropoff ? 'bg-red-500' : 'bg-purple-600'
+                    }`}
+                    style={{ width: `${percentage}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Drop-off Analysis - Critical for Optimization */}
+      <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+        <h3 className="text-xl font-bold text-white mb-6">⚠️ Drop-off Analysis</h3>
+        <div className="space-y-3">
+          {dropoffAnalysis.map((item, index) => (
+            <div 
+              key={item.stage} 
+              className={`p-4 rounded-lg border ${
+                item.dropRate > 40 
+                  ? 'bg-red-900/20 border-red-500' 
+                  : 'bg-slate-700/30 border-slate-600'
               }`}
             >
-              {range.label}
-            </button>
+              <div className="flex justify-between items-center">
+                <span className="font-medium text-white">{item.stage}</span>
+                <div className="text-right">
+                  <span className="text-red-400 font-bold">{item.lost} users lost</span>
+                  <span className="text-slate-400 ml-2">({item.dropRate}% drop rate)</span>
+                </div>
+              </div>
+              {item.dropRate > 40 && (
+                <p className="text-red-300 text-sm mt-2">
+                  🚨 High drop-off rate - investigate user experience at this stage
+                </p>
+              )}
+            </div>
           ))}
         </div>
       </div>
 
-      {analytics && (
-        <div className="space-y-6">
-          {/* Enhanced Overview Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <StatCard
-              title="Total Users"
-              value={analytics.overview.totalUsers}
-              icon="👥"
-              subtitle={`${analytics.overview.newUsers} new, ${analytics.overview.activeSessions} active sessions`}
-            />
-            <StatCard
-              title="Page Views"
-              value={analytics.overview.totalPageViews}
-              icon="👁️"
-              subtitle={`${analytics.overview.uniquePageViews} unique pages`}
-            />
-            <StatCard
-              title="Total Searches"
-              value={analytics.overview.totalSearches}
-              icon="🔍"
-              subtitle={`${analytics.overview.peopleSearches} people, ${analytics.overview.collectionSearches} collections`}
-            />
-            <StatCard
-              title="Items Added"
-              value={analytics.overview.peopleAdded + analytics.overview.collectionsAdded}
-              icon="➕"
-              subtitle={`${analytics.overview.peopleAdded} people, ${analytics.overview.collectionsAdded} collections`}
-            />
-          </div>
-
-          {/* Search Mode Usage */}
-          <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
-            <h3 className="text-xl font-bold text-white mb-4">🎯 Search Mode Preferences</h3>
-            <div className="grid grid-cols-2 gap-4">
-              {Object.entries(analytics.searchModes).map(([mode, count]) => (
-                <div key={mode} className="text-center p-4 bg-slate-700/30 rounded-lg">
-                  <div className="text-2xl font-bold text-purple-400">{count}</div>
-                  <div className="text-sm text-slate-400 capitalize">
-                    {mode === 'people' ? '👥 People Search' : '🎬 Collections Search'}
-                  </div>
-                  <div className="text-xs text-slate-500 mt-1">
-                    {((count / Object.values(analytics.searchModes).reduce((a, b) => a + b, 0)) * 100).toFixed(1)}%
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Popular Searches - Enhanced */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
-              <h3 className="text-xl font-bold text-white mb-4">🔥 Popular Searches</h3>
-              <div className="space-y-3">
-                {analytics.popularSearches.slice(0, 10).map((search, index) => (
-                  <div key={index} className="flex justify-between items-center">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-xs bg-slate-600 text-slate-300 px-2 py-1 rounded">
-                        {search.type === 'people' ? '👥' : '🎬'}
-                      </span>
-                      <span className="text-slate-300">{search.query}</span>
-                    </div>
-                    <span className="text-purple-400 font-medium">{search.count}</span>
-                  </div>
-                ))}
+      {/* Key Business Metrics */}
+      <div className="grid md:grid-cols-2 gap-6">
+        <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+          <h3 className="text-lg font-bold text-white mb-4">📈 User Behavior</h3>
+          <div className="space-y-3">
+            {Object.entries(usage).map(([metric, value]) => (
+              <div key={metric} className="flex justify-between">
+                <span className="text-slate-400 capitalize">
+                  {metric.replace(/([A-Z])/g, ' $1')}
+                </span>
+                <span className="text-white font-medium">{value}</span>
               </div>
-            </div>
-
-            <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
-              <h3 className="text-xl font-bold text-white mb-4">⭐ Popular Additions</h3>
-              <div className="space-y-3">
-                {[...analytics.popularPeople, ...analytics.popularCollections]
-                  .sort((a, b) => b.count - a.count)
-                  .slice(0, 10)
-                  .map((item, index) => (
-                    <div key={index} className="flex justify-between items-center">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-xs bg-slate-600 text-slate-300 px-2 py-1 rounded">
-                          {item.type === 'person' ? '👤' : '🎬'}
-                        </span>
-                        <span className="text-slate-300">{item.name}</span>
-                      </div>
-                      <span className="text-purple-400 font-medium">{item.count}</span>
-                    </div>
-                  ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Collection Types Distribution */}
-          <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
-            <h3 className="text-xl font-bold text-white mb-4">🎬 Collection Search Types</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {Object.entries(analytics.collectionTypes).map(([type, count]) => (
-                <div key={type} className="text-center p-4 bg-slate-700/30 rounded-lg">
-                  <div className="text-2xl mb-2">
-                    {type === 'collection' ? '🎬' : 
-                     type === 'company' ? '🏢' : 
-                     type === 'keyword' ? '🏷️' : 
-                     type === 'genre' ? '🎭' : '📁'}
-                  </div>
-                  <div className="text-xl font-bold text-green-400">{count}</div>
-                  <div className="text-sm text-slate-400 capitalize">{type}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Feature Usage Analysis */}
-          <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
-            <h3 className="text-xl font-bold text-white mb-4">🚀 Feature Usage</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {Object.entries(analytics.featureUsage).map(([feature, count]) => (
-                <div key={feature} className="text-center p-3 bg-slate-700/30 rounded-lg">
-                  <div className="text-lg font-bold text-blue-400">{count}</div>
-                  <div className="text-xs text-slate-400">
-                    {feature.replace(/([A-Z])/g, ' $1').toLowerCase()}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Role Type Distribution */}
-          <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
-            <h3 className="text-xl font-bold text-white mb-4">🎭 Popular Roles</h3>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              {Object.entries(analytics.roleTypes).map(([role, count]) => (
-                <div key={role} className="text-center p-4 bg-slate-700/30 rounded-lg">
-                  <div className="text-2xl font-bold text-green-400">{count}</div>
-                  <div className="text-sm text-slate-400 capitalize">{role}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Event Types */}
-          <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
-            <h3 className="text-xl font-bold text-white mb-4">📈 All Events</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-              {Object.entries(analytics.eventTypes).map(([event, count]) => (
-                <div key={event} className="text-center p-3 bg-slate-700/30 rounded-lg">
-                  <div className="text-lg font-bold text-purple-400">{count}</div>
-                  <div className="text-xs text-slate-400">
-                    {event.replace(/_/g, ' ')}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Recent Activity */}
-          <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
-            <h3 className="text-xl font-bold text-white mb-4">⏰ Recent Activity</h3>
-            <div className="space-y-3 max-h-80 overflow-y-auto scrollbar-thin">
-              {analytics.recentActivity.map((activity, index) => (
-                <div key={index} className="flex justify-between items-start p-3 bg-slate-700/30 rounded">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-slate-300 capitalize font-medium">
-                        {activity.eventType.replace(/_/g, ' ')}
-                      </span>
-                      {getActivityIcon(activity.eventType)}
-                    </div>
-                    {activity.eventData && Object.keys(activity.eventData).length > 0 && (
-                      <div className="text-xs text-slate-500 mt-1">
-                        {formatActivityData(activity.eventData)}
-                      </div>
-                    )}
-                  </div>
-                  <span className="text-xs text-slate-500 whitespace-nowrap ml-4">
-                    {new Date(activity.timestamp).toLocaleString()}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* User Agents */}
-          <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
-            <h3 className="text-xl font-bold text-white mb-4">💻 Popular Browsers/Devices</h3>
-            <div className="space-y-2">
-              {analytics.userAgents.slice(0, 8).map((agent, index) => (
-                <div key={index} className="flex justify-between items-center">
-                  <span className="text-slate-300 text-sm">{agent.browser}</span>
-                  <span className="text-purple-400 font-medium">{agent.count}</span>
-                </div>
-              ))}
-            </div>
+            ))}
           </div>
         </div>
-      )}
-    </div>
-  );
-}
 
-function StatCard({ title, value, icon, subtitle }) {
-  return (
-    <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-medium text-slate-400">{title}</h3>
-        <span className="text-2xl">{icon}</span>
+        <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+          <h3 className="text-lg font-bold text-white mb-4">⚡ Performance</h3>
+          <div className="space-y-3">
+            {Object.entries(performance).map(([metric, value]) => (
+              <div key={metric} className="flex justify-between">
+                <span className="text-slate-400 capitalize">
+                  {metric.replace(/([A-Z])/g, ' $1')}
+                </span>
+                <span className="text-white font-medium">{value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
-      <div className="text-2xl font-bold text-white mb-1">{value.toLocaleString()}</div>
-      {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
+
+      {/* Popular Searches - Product Intelligence */}
+      <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+        <h3 className="text-lg font-bold text-white mb-4">🔥 Popular Searches</h3>
+        <div className="space-y-2">
+          {popularSearches.map((search, index) => (
+            <div key={search.query} className="flex justify-between items-center p-2 bg-slate-700/30 rounded">
+              <div className="flex items-center space-x-3">
+                <span className="text-slate-500 text-sm">#{index + 1}</span>
+                <span className="text-slate-300">{search.query}</span>
+              </div>
+              <span className="text-purple-400 font-medium">{search.count} searches</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Business Insights */}
+      <div className="bg-blue-600/20 border border-blue-500 rounded-xl p-6">
+        <h3 className="text-lg font-bold text-blue-200 mb-4">💡 Key Insights</h3>
+        <div className="space-y-2 text-blue-100 text-sm">
+          <div>
+            <strong>Main Problem:</strong> {dropoffAnalysis.find(d => d.dropRate > 40)?.stage} 
+            has {dropoffAnalysis.find(d => d.dropRate > 40)?.dropRate}% drop rate
+          </div>
+          <div>
+            <strong>Conversion Rate:</strong> {((funnel.activeUsers / funnel.pageViews) * 100).toFixed(1)}% 
+            of visitors become active users
+          </div>
+          <div>
+            <strong>Top Opportunity:</strong> Improving post-setup onboarding could 
+            recover {dropoffAnalysis[2]?.lost} users
+          </div>
+        </div>
+      </div>
     </div>
   );
-}
-
-function getActivityIcon(eventType) {
-  const icons = {
-    'search_people': '👥',
-    'search_collections': '🎬',
-    'add_person_to_list': '➕👤',
-    'add_collection_to_list': '➕🎬',
-    'filmography_loaded': '🎭',
-    'collection_movies_loaded': '📽️',
-    'search_mode_switch': '🔄',
-    'rss_generated': '📡',
-    'page_view': '👁️',
-    'user_created': '🆕'
-  };
-  return <span className="text-xs">{icons[eventType] || '📊'}</span>;
-}
-
-function formatActivityData(eventData) {
-  const keys = Object.keys(eventData).filter(key => 
-    !['userId', 'sessionId', 'timestamp'].includes(key)
-  );
-  
-  return keys.slice(0, 3).map(key => {
-    const value = eventData[key];
-    const displayValue = typeof value === 'string' ? 
-      value.substring(0, 30) + (value.length > 30 ? '...' : '') : 
-      value;
-    return `${key}: ${displayValue}`;
-  }).join(' • ');
 }
 
 export default AdminView;
