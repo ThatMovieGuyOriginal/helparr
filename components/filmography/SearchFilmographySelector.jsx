@@ -8,7 +8,10 @@ export default function SearchFilmographySelector({
   onSave, 
   personName, 
   role,
-  sourceType = 'person'
+  sourceType = 'person',
+  paginationInfo = null,
+  onLoadMore = null,
+  isLoadingMore = false
 }) {
   const [searchFilter, setSearchFilter] = useState('');
 
@@ -142,6 +145,42 @@ export default function SearchFilmographySelector({
         <p className="text-xs text-slate-400 mt-2 text-right">
           Movies will auto-sync to RSS feed after 5 seconds
         </p>
+      )}
+
+      {/* Pagination info and Load More button */}
+      {paginationInfo && (
+        <div className="mt-6 border-t border-slate-600 pt-6">
+          <div className="text-center">
+            <div className="mb-4 text-sm text-slate-400">
+              Showing {movies.length} of {paginationInfo.totalResults.toLocaleString()} total movies
+            </div>
+            
+            {paginationInfo.hasMore && onLoadMore && (
+              <button
+                onClick={onLoadMore}
+                disabled={isLoadingMore}
+                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200 flex items-center justify-center mx-auto"
+              >
+                {isLoadingMore ? (
+                  <>
+                    <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
+                    Loading more movies...
+                  </>
+                ) : (
+                  <>
+                    📥 Load More Movies ({(paginationInfo.totalResults - movies.length).toLocaleString()} remaining)
+                  </>
+                )}
+              </button>
+            )}
+            
+            {!paginationInfo.hasMore && paginationInfo.totalResults > movies.length && (
+              <div className="text-sm text-slate-500">
+                💡 Showing movies with IMDB IDs (required for RSS feeds)
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
