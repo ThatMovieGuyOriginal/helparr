@@ -18,9 +18,10 @@ export default function ManageView({
   setRssUrl,
   setSuccess,
   setError,
-  handleNavigation
+  handleNavigation,
+  onMovieCountChange
 }) {
-  const [activeTab, setActiveTab] = useState('collection'); // Start with collection tab
+  const [activeTab, setActiveTab] = useState('collection');
   const [showExportImport, setShowExportImport] = useState(false);
   const [usageStats, setUsageStats] = useState(null);
   const userManagement = useUserManagement();
@@ -34,17 +35,21 @@ export default function ManageView({
       totalRoles: people.reduce((acc, person) => acc + (person.roles?.length || 0), 0)
     };
     setUsageStats(stats);
-  }, [people, selectedMovies]);
+    
+    // Trigger movie count update
+    onMovieCountChange?.(selectedMovies.length);
+  }, [people, selectedMovies, onMovieCountChange]);
 
-  const handleGenerateRssUrl = async () => {
-    userManagement.generateRssUrl(
+  const handleManualSync = async () => {
+    await userManagement.generateRssUrl(
       userId,
       tenantSecret,
       selectedMovies,
       people,
       setRssUrl,
       setSuccess,
-      setError
+      setError,
+      onMovieCountChange
     );
   };
 
@@ -115,6 +120,35 @@ export default function ManageView({
       trackEvent('data_imported', {
         importedItems: importData.people.length
       });
+
+      // Trigger auto-sync after import
+      if (userId && tenantSecret && setRssUrl) {
+        const allSelectedMovies = mergedPeople.flatMap(person =>
+          person.roles?.flatMap(role =>
+            role.movies
+              ?.filter(movie => movie.selected !== false && movie.imdb_id)
+              .map(movie => ({
+                ...movie,
+                source: {
+                  type: person.type === 'collection' ? 'collection' : 'person',
+                  name: person.name,
+                  role: role.type
+                }
+              })) || []
+          ) || []
+        );
+
+        userManagement.triggerAutoSync(
+          userId, 
+          tenantSecret, 
+          allSelectedMovies, 
+          mergedPeople, 
+          setRssUrl, 
+          setSuccess, 
+          setError,
+          onMovieCountChange
+        );
+      }
     } catch (error) {
       setError('Import failed: ' + error.message);
     }
@@ -130,6 +164,7 @@ export default function ManageView({
       localStorage.removeItem('tmdbKey');
       localStorage.removeItem('tenantSecret');
       localStorage.removeItem('rssUrl');
+      localStorage.removeItem('lastRSSAccess');
       
       const newId = crypto.randomUUID();
       localStorage.setItem('userId', newId);
@@ -143,19 +178,68 @@ export default function ManageView({
   };
 
   const handleRemovePerson = (personId) => {
-    userManagement.removePerson(personId, people, setPeople, updateSelectedMovies);
+    userManagement.removePerson(
+      personId, 
+      people, 
+      setPeople, 
+      updateSelectedMovies,
+      userId,
+      tenantSecret,
+      setRssUrl,
+      setSuccess,
+      setError,
+      onMovieCountChange
+    );
   };
 
   const handleRemoveRole = (personId, roleType) => {
-    userManagement.removeRole(personId, roleType, people, setPeople, updateSelectedMovies);
+    userManagement.removeRole(
+      personId, 
+      roleType, 
+      people, 
+      setPeople, 
+      updateSelectedMovies,
+      userId,
+      tenantSecret,
+      setRssUrl,
+      setSuccess,
+      setError,
+      onMovieCountChange
+    );
   };
 
   const handleToggleMovie = (personId, roleType, movieId) => {
-    userManagement.toggleMovieForPerson(personId, roleType, movieId, people, setPeople, updateSelectedMovies);
+    userManagement.toggleMovieForPerson(
+      personId, 
+      roleType, 
+      movieId, 
+      people, 
+      setPeople, 
+      updateSelectedMovies,
+      userId,
+      tenantSecret,
+      setRssUrl,
+      setSuccess,
+      setError,
+      onMovieCountChange
+    );
   };
 
   const handleSelectAllForRole = (personId, roleType, selectAll) => {
-    userManagement.selectAllForRole(personId, roleType, selectAll, people, setPeople, updateSelectedMovies);
+    userManagement.selectAllForRole(
+      personId, 
+      roleType, 
+      selectAll, 
+      people, 
+      setPeople, 
+      updateSelectedMovies,
+      userId,
+      tenantSecret,
+      setRssUrl,
+      setSuccess,
+      setError,
+      onMovieCountChange
+    );
   };
 
   const tabs = [
@@ -168,13 +252,21 @@ export default function ManageView({
       {/* Header with Action Buttons */}
       <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-bold text-white">Manage Your Movie Collection</h2>
+          <div>
+            <h2 className="text-2xl font-bold text-white">Manage Your Movie Collection</h2>
+            {userManagement.autoSyncStatus && (
+              <p className="text-sm text-slate-400 mt-1">
+                {userManagement.autoSyncStatus}
+              </p>
+            )}
+          </div>
           <div className="flex space-x-3">
             <button
-              onClick={handleGenerateRssUrl}
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors duration-200"
+              onClick={handleManualSync}
+              disabled={userManagement.isAutoSyncing}
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200"
             >
-              📡 Update RSS Feed
+              ⚡ Sync Now
             </button>
             <button
               onClick={() => setShowExportImport(!showExportImport)}
@@ -188,6 +280,17 @@ export default function ManageView({
             >
               ⚠️ Reset All
             </button>
+          </div>
+        </div>
+
+        {/* Auto-sync Information */}
+        <div className="bg-blue-600/10 border border-blue-500/30 rounded-lg p-3 mb-4">
+          <div className="flex items-center space-x-2">
+            <span className="text-blue-300 text-sm">⚡</span>
+            <span className="text-blue-200 text-sm">
+              <strong>Auto-sync enabled:</strong> Changes automatically sync after 5 seconds. 
+              Use "Sync Now" for immediate updates.
+            </span>
           </div>
         </div>
 
@@ -234,7 +337,7 @@ export default function ManageView({
             <div>
               <h4 className="font-medium text-white mb-2">Import Collection</h4>
               <p className="text-sm text-slate-400 mb-3">
-                Import from a previous export. Data will be merged with your current collection.
+                Import from a previous export. Data will be merged and auto-synced.
               </p>
               <input
                 type="file"
@@ -247,7 +350,7 @@ export default function ManageView({
         </div>
       )}
 
-      {/* Simplified Tabs - Removed Overview tab since RSS is now at top */}
+      {/* Simplified Tabs */}
       <div className="flex space-x-1 bg-slate-800/30 rounded-lg p-1">
         {tabs.map(tab => (
           <button
@@ -350,6 +453,10 @@ export default function ManageView({
                         <span className="text-white font-medium">2.0</span>
                       </div>
                       <div className="flex justify-between">
+                        <span className="text-slate-400">Auto-sync:</span>
+                        <span className="text-green-400 font-medium">Enabled</span>
+                      </div>
+                      <div className="flex justify-between">
                         <span className="text-slate-400">Last Updated:</span>
                         <span className="text-white font-medium">{new Date().toLocaleDateString()}</span>
                       </div>
@@ -380,6 +487,12 @@ export default function ManageView({
                   <span className="text-white font-medium">{usageStats?.movieCount || 0}</span>
                 </div>
                 <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Auto-sync Status:</span>
+                  <span className="text-green-400 font-medium">
+                    {userManagement.autoSyncStatus || 'Ready'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
                   <span className="text-slate-400">Last Updated:</span>
                   <span className="text-white font-medium">Live (auto-sync)</span>
                 </div>
@@ -388,7 +501,7 @@ export default function ManageView({
               {!rssUrl && (
                 <div className="mt-4 p-3 bg-yellow-600/20 border border-yellow-500 rounded-lg">
                   <p className="text-yellow-200 text-sm">
-                    💡 Click "Update RSS Feed" above to generate your RSS URL for Radarr.
+                    💡 Click "Sync Now" above to generate your RSS URL for Radarr.
                   </p>
                 </div>
               )}
