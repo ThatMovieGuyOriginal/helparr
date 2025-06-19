@@ -9,7 +9,14 @@ import ManageView from './views/ManageView';
 import HelpView from './views/HelpView';
 import MessageContainer from './ui/MessageContainer';
 
-export default function MainApp({ userId, tenantSecret }) {
+export default function MainApp({ 
+  userId, 
+  tenantSecret, 
+  rssUrl, 
+  setRssUrl, 
+  onMovieCountChange,
+  setAutoSyncStatus 
+}) {
   // Navigation state
   const [currentView, setCurrentView] = useState('search');
   
@@ -22,12 +29,18 @@ export default function MainApp({ userId, tenantSecret }) {
   const [people, setPeople] = useState([]);
   const [selectedMovies, setSelectedMovies] = useState([]);
   const [expandedPeople, setExpandedPeople] = useState(new Set());
-  const [rssUrl, setRssUrl] = useState('');
 
   // Initialize hooks with proper error handling
   const personSearch = usePersonSearch(userId, tenantSecret);
   const filmography = useFilmography(userId, tenantSecret);
   const userManagement = useUserManagement();
+
+  // Pass auto-sync status up to parent for RSS URL bar
+  useEffect(() => {
+    if (setAutoSyncStatus) {
+      setAutoSyncStatus(userManagement.autoSyncStatus);
+    }
+  }, [userManagement.autoSyncStatus, setAutoSyncStatus]);
 
   // Load saved data on mount
   useEffect(() => {
@@ -35,28 +48,23 @@ export default function MainApp({ userId, tenantSecret }) {
     
     try {
       const savedPeople = localStorage.getItem('people');
-      const savedRssUrl = localStorage.getItem('rssUrl');
       
       if (savedPeople) {
         const parsedPeople = JSON.parse(savedPeople);
         setPeople(parsedPeople);
         updateSelectedMovies(parsedPeople);
       }
-      
-      if (savedRssUrl) {
-        setRssUrl(savedRssUrl);
-      }
 
       trackEvent('app_loaded', { 
         hasSavedData: !!savedPeople, 
-        hasRssUrl: !!savedRssUrl,
+        hasRssUrl: !!rssUrl,
         peopleCount: savedPeople ? JSON.parse(savedPeople).length : 0
       });
     } catch (err) {
       console.error('Failed to load saved data:', err);
       setError('Failed to load your saved data. Starting fresh.');
     }
-  }, [userId, tenantSecret]);
+  }, [userId, tenantSecret, rssUrl]);
 
   // Auto-clear messages
   useEffect(() => {
@@ -96,6 +104,9 @@ export default function MainApp({ userId, tenantSecret }) {
       
       setSelectedMovies(allSelectedMovies);
       localStorage.setItem('selectedMovies', JSON.stringify(allSelectedMovies));
+      
+      // Update movie count in parent
+      onMovieCountChange?.(allSelectedMovies.length);
     } catch (err) {
       console.error('Failed to update selected movies:', err);
       setError('Failed to update movie selection');
@@ -216,15 +227,15 @@ export default function MainApp({ userId, tenantSecret }) {
         setPeople={setPeople}
         updateSelectedMovies={updateSelectedMovies}
         
-        // Manage View Props
+        // Manage View Props (enhanced with auto-sync)
         selectedMovies={selectedMovies}
         expandedPeople={expandedPeople}
         setExpandedPeople={setExpandedPeople}
         rssUrl={rssUrl}
         setRssUrl={setRssUrl}
-        setTenantSecret={() => {}} // RSS regeneration requires this
         copySuccess={copySuccess}
         copyRssUrl={copyRssUrl}
+        onMovieCountChange={onMovieCountChange}
       />
     </div>
   );
