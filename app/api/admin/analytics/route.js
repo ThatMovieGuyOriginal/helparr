@@ -1,5 +1,5 @@
 // app/api/admin/analytics/route.js
-import { getRedis } from '../../../lib/kv';
+import { getRedis } from '../../../../lib/kv';
 
 // Production analytics - reads from actual system data
 export async function GET() {
