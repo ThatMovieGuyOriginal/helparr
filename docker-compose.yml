@@ -1,5 +1,5 @@
 # docker-compose.yml
-# Complete self-hosted Helparr setup with Redis backend
+# Complete self-hosted Helparr setup with optional Redis backend
 
 version: '3.8'
 
@@ -12,18 +12,24 @@ services:
       - "${HELPARR_PORT:-3000}:3000"
     environment:
       - NODE_ENV=production
-      - REDIS_URL=redis://redis:6379
       - PORT=3000
       - HOSTNAME=0.0.0.0
+      # Redis is optional - comment out REDIS_URL to use in-memory storage
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       # Optional: Add custom configuration
       - HELPARR_INSTANCE_NAME=${HELPARR_INSTANCE_NAME:-Helparr Self-Hosted}
       - HELPARR_ADMIN_EMAIL=${HELPARR_ADMIN_EMAIL:-admin@localhost}
+      # Optional: TMDb health monitoring
+      - TMDB_HEALTH_CHECK=${TMDB_HEALTH_CHECK:-false}
+      # Optional: Demo API key for public instances
+      - TMDB_DEMO_API_KEY=${TMDB_DEMO_API_KEY}
     volumes:
       - helparr_data:/app/data
       - /etc/localtime:/etc/localtime:ro
     depends_on:
       redis:
         condition: service_healthy
+        required: false  # Redis is optional
     networks:
       - helparr_network
     labels:
@@ -32,17 +38,18 @@ services:
       - "traefik.http.routers.helparr.tls=true"
       - "traefik.http.services.helparr.loadbalancer.server.port=3000"
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
 
+  # Redis service (optional but recommended for production)
   redis:
     image: redis:7-alpine
     container_name: helparr_redis
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory ${REDIS_MAXMEMORY:-256mb} --maxmemory-policy ${REDIS_POLICY:-allkeys-lru}
     volumes:
       - redis_data:/data
       - /etc/localtime:/etc/localtime:ro
@@ -54,9 +61,12 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
-    # Security: don't expose Redis port externally
+    # Security: don't expose Redis port externally by default
+    # Uncomment if you need external Redis access
     # ports:
     #   - "6379:6379"
+    profiles:
+      - redis  # Use profiles to make Redis optional
 
   # Optional: Reverse proxy with automatic SSL
   traefik:
@@ -105,77 +115,92 @@ networks:
         - subnet: 172.20.0.0/16
 
 ---
-# docker-compose.override.yml (for development)
-# This file is automatically loaded in development environments
+# docker-compose.memory.yml
+# Minimal setup using only in-memory storage (no Redis)
 
 version: '3.8'
 
 services:
   helparr:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: development
-    environment:
-      - NODE_ENV=development
-      - WATCHPACK_POLLING=true
-    volumes:
-      - .:/app
-      - /app/node_modules
-      - /app/.next
-    command: npm run dev
-
-  # Development-only services
-  adminer:
-    image: adminer:4-standalone
-    container_name: helparr_adminer
+    image: helparr/helparr:latest
+    container_name: helparr_memory
     restart: unless-stopped
     ports:
-      - "8081:8080"
-    networks:
-      - helparr_network
-    profiles:
-      - development
+      - "${HELPARR_PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      # No REDIS_URL = in-memory storage mode
+      - HELPARR_INSTANCE_NAME=${HELPARR_INSTANCE_NAME:-Helparr (Memory Mode)}
+      - HELPARR_ADMIN_EMAIL=${HELPARR_ADMIN_EMAIL:-admin@localhost}
+    volumes:
+      - helparr_data_memory:/app/data
+      - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  helparr_data_memory:
+    driver: local
 
 ---
-# docker-compose.rss-only.yml
-# Minimal RSS-only deployment for privacy-focused users
+# docker-compose.redis.yml  
+# Full setup with Redis for production use
 
 version: '3.8'
 
 services:
-  helparr-rss:
-    image: helparr/helparr:rss-only
-    container_name: helparr_rss_only
+  helparr:
+    image: helparr/helparr:latest
+    container_name: helparr_redis
     restart: unless-stopped
     ports:
-      - "${RSS_PORT:-3001}:3000"
+      - "${HELPARR_PORT:-3000}:3000"
     environment:
       - NODE_ENV=production
-      - HELPARR_MODE=rss-only
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
       - REDIS_URL=redis://redis:6379
+      - HELPARR_INSTANCE_NAME=${HELPARR_INSTANCE_NAME:-Helparr (Redis Mode)}
+      - HELPARR_ADMIN_EMAIL=${HELPARR_ADMIN_EMAIL:-admin@localhost}
+      - TMDB_HEALTH_CHECK=${TMDB_HEALTH_CHECK:-true}
     volumes:
-      - rss_data:/app/data
+      - helparr_data_redis:/app/data
       - /etc/localtime:/etc/localtime:ro
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     networks:
-      - rss_network
+      - helparr_network
 
   redis:
     image: redis:7-alpine
-    container_name: rss_redis
+    container_name: helparr_redis_db
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory ${REDIS_MAXMEMORY:-512mb} --maxmemory-policy ${REDIS_POLICY:-allkeys-lru}
     volumes:
-      - redis_rss_data:/data
+      - redis_data_prod:/data
+      - /etc/localtime:/etc/localtime:ro
     networks:
-      - rss_network
+      - helparr_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
 volumes:
-  rss_data:
-  redis_rss_data:
+  helparr_data_redis:
+    driver: local
+  redis_data_prod:
+    driver: local
 
 networks:
-  rss_network:
+  helparr_network:
     driver: bridge
