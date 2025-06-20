@@ -138,13 +138,22 @@ POST /api/sync-list              # Update RSS feed with selected movies
 ### Environment Variables
 ```env
 # Required for production
-REDIS_URL=redis://localhost:6379
+REDIS_URL=redis://localhost:6379       # Optional: Redis for persistent storage
 
-# Optional
-VERCEL_AUTOMATION_BYPASS_SECRET=your_bypass_secret
-TMDB_DEMO_API_KEY=demo_api_key_for_public_use
-TMDB_HEALTH_CHECK=true
+# Optional configuration
+VERCEL_AUTOMATION_BYPASS_SECRET=secret  # Vercel protection bypass
+TMDB_DEMO_API_KEY=demo_key              # Public demo functionality
+TMDB_HEALTH_CHECK=true                  # Enable TMDb API health monitoring
+
+# Docker-specific
+HELPARR_PORT=3000                       # Port for Docker deployment
+HELPARR_INSTANCE_NAME="My Helparr"      # Custom instance name
+HELPARR_DATA_PATH=./data                # Data directory for Docker volumes
+REDIS_MAXMEMORY=256mb                   # Redis memory limit
+REDIS_POLICY=allkeys-lru                # Redis eviction policy
 ```
+
+**Note**: If `REDIS_URL` is not provided, Helparr automatically uses in-memory storage with graceful fallback.
 
 ### Local Development
 ```bash
@@ -185,7 +194,7 @@ npm start
 
 ## 🐳 Deployment
 
-### Vercel (Recommended)
+### Vercel (Recommended for Public Instance)
 ```bash
 # Deploy to Vercel
 npm i -g vercel
@@ -195,17 +204,44 @@ vercel
 # Connect Redis database (Upstash recommended)
 ```
 
-### Docker
-```bash
-# Build and run with Docker Compose
-docker-compose up -d
+### Docker (Recommended for Self-Hosting)
 
-# Or build standalone
-docker build -t helparr .
-docker run -p 3000:3000 -e REDIS_URL=redis://redis:6379 helparr
+#### Quick Start - Memory Mode
+```bash
+# Simplest setup - no Redis required
+docker run -p 3000:3000 helparr/helparr:latest
 ```
 
-### Self-Hosted
+#### Production Setup - Redis Mode
+```bash
+# Full setup with Redis persistence
+git clone https://github.com/ThatMovieGuyOriginal/helparr.git
+cd helparr
+docker-compose -f docker-compose.redis.yml up -d
+```
+
+#### Custom Configuration
+```bash
+# Create .env file
+cat > .env << EOF
+HELPARR_PORT=3000
+HELPARR_INSTANCE_NAME="My Personal Helparr"
+REDIS_URL=redis://localhost:6379
+REDIS_MAXMEMORY=512mb
+EOF
+
+# Deploy with custom settings
+docker-compose up -d
+```
+
+**Storage Modes:**
+- **Memory Mode**: No Redis required, data lost on restart (perfect for testing)
+- **Redis Mode**: Persistent storage, recommended for production use
+- **Automatic Fallback**: If Redis fails, automatically switches to memory mode
+
+See [Docker Deployment Guide](DOCKER.md) for complete configuration options.
+
+### Self-Hosted (Node.js)
 ```bash
 # Build and serve
 npm run build
@@ -220,13 +256,35 @@ pm2 start npm --name "helparr" -- start
 
 ### Health Checks
 - **Endpoint**: `GET /api/health`
-- **Docker**: Built-in health check every 30s
-- **Metrics**: Redis connectivity, RSS generation, uptime
+- **Docker**: Built-in health check every 30s using curl
+- **Metrics**: Storage connectivity, RSS generation, uptime, storage mode
+- **Storage Monitoring**: Automatic detection of Redis vs memory mode
+
+```json
+{
+  "status": "healthy",
+  "services": {
+    "storage": {
+      "status": "healthy", 
+      "mode": "redis",
+      "redisConnected": true
+    },
+    "rss": {
+      "status": "healthy",
+      "cacheSize": 5
+    }
+  },
+  "deployment": {
+    "storageMode": "redis",
+    "hasRedis": "configured"
+  }
+}
+```
 
 ### Logging
-- **Client**: Privacy-focused event tracking
-- **Server**: Request logging with rate limit monitoring
-- **RSS**: Access tracking for countdown calculation
+- **Client**: Privacy-focused event tracking for conversion analysis
+- **Server**: Request logging with rate limit monitoring and storage mode tracking
+- **RSS**: Access tracking for countdown calculation and usage analytics
 
 ## 🔧 Configuration
 
