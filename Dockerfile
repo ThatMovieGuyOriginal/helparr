@@ -9,17 +9,28 @@ COPY package*.json ./
 FROM base AS deps
 RUN npm ci --only=production && npm cache clean --force
 
-# Build stage  
-FROM base AS build
-COPY . .
+# Development dependencies stage
+FROM base AS dev-deps
 RUN npm ci
+
+# Development stage (for docker-compose.override.yml)
+FROM dev-deps AS development
+COPY . .
+ENV NODE_ENV=development
+ENV WATCHPACK_POLLING=true
+EXPOSE 3000
+CMD ["npm", "run", "dev"]
+
+# Build stage  
+FROM dev-deps AS build
+COPY . .
 RUN npm run build
 
 # Production stage
 FROM node:18-alpine AS production
 
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
+# Install curl for health checks (more reliable than wget)
+RUN apk add --no-cache dumb-init curl
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs
@@ -38,9 +49,9 @@ COPY --from=build --chown=helparr:nodejs /app/package.json ./package.json
 # Create data directory for persistence
 RUN mkdir -p /app/data && chown helparr:nodejs /app/data
 
-# Health check for RSS endpoints
+# Health check for RSS endpoints using curl
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
+  CMD curl -f http://localhost:3000/api/health || exit 1
 
 # Security: run as non-root user
 USER helparr
