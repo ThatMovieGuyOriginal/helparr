@@ -1,7 +1,8 @@
 // app/api/health/route.js
-// Health check endpoint for Docker and monitoring systems
+// Enhanced health check with Redis fallback support
 
 import { rssManager } from '../../../lib/RSSManager';
+import { getStorageStatus } from '../../../lib/kv';
 
 const startTime = Date.now();
 
@@ -17,23 +18,35 @@ export async function GET(request) {
   };
 
   try {
-    // Check Redis connectivity
+    // Check storage (Redis or memory fallback)
     try {
-      const { getRedis } = await import('../../../lib/kv');
-      const redis = await getRedis();
+      const { getStorage } = await import('../../../lib/kv');
+      const storage = await getStorage();
+      const storageStatus = getStorageStatus();
       
-      // Test Redis with a simple ping
-      await redis.ping();
-      healthCheck.services.redis = {
+      // Test storage with a simple operation
+      await storage.ping();
+      
+      healthCheck.services.storage = {
         status: 'healthy',
-        responseTime: 0 // Will be calculated below
+        mode: storageStatus.mode,
+        redisConnected: storageStatus.redisConnected,
+        memoryEntries: storageStatus.memoryEntries,
+        connectionAttempted: storageStatus.connectionAttempted
       };
-    } catch (redisError) {
-      healthCheck.services.redis = {
+      
+      // Add informational message for memory mode
+      if (storageStatus.mode === 'memory') {
+        healthCheck.services.storage.note = 'Using in-memory storage (Redis unavailable)';
+      }
+      
+    } catch (storageError) {
+      healthCheck.services.storage = {
         status: 'unhealthy',
-        error: redisError.message
+        mode: 'failed',
+        error: storageError.message
       };
-      healthCheck.errors.push(`Redis: ${redisError.message}`);
+      healthCheck.errors.push(`Storage: ${storageError.message}`);
     }
 
     // Check RSS Manager
@@ -45,7 +58,7 @@ export async function GET(request) {
       healthCheck.services.rss = {
         status: isValidRss ? 'healthy' : 'degraded',
         cacheSize: rssManager.feedCache.size,
-        healthChecks: rssManager.healthChecks.size
+        generatorWorking: isValidRss
       };
       
       if (!isValidRss) {
@@ -76,8 +89,8 @@ export async function GET(request) {
         
         healthCheck.services.tmdb = {
           status: tmdbResponse.ok ? 'healthy' : 'degraded',
-          responseTime: 0, // Could measure this
-          httpStatus: tmdbResponse.status
+          httpStatus: tmdbResponse.status,
+          note: 'External API check'
         };
         
         if (!tmdbResponse.ok) {
@@ -85,48 +98,66 @@ export async function GET(request) {
         }
       } catch (tmdbError) {
         healthCheck.services.tmdb = {
-          status: 'unhealthy',
-          error: tmdbError.name === 'AbortError' ? 'Timeout' : tmdbError.message
+          status: 'degraded', // Not critical for core functionality
+          error: tmdbError.name === 'AbortError' ? 'Timeout' : tmdbError.message,
+          note: 'External API check failed'
         };
-        healthCheck.errors.push(`TMDb: ${tmdbError.message}`);
+        // Don't add to errors since TMDb is external dependency
       }
     }
 
-    // Check disk space (in Docker environments)
+    // Check file system access (Docker environments)
     try {
       if (typeof process !== 'undefined' && process.platform !== 'win32') {
         const fs = await import('fs/promises');
-        const stats = await fs.stat('/app/data').catch(() => null);
         
-        if (stats) {
-          healthCheck.services.storage = {
+        // Try to access data directory
+        try {
+          const stats = await fs.stat('/app/data');
+          healthCheck.services.filesystem = {
             status: 'healthy',
             dataDirectory: '/app/data',
-            accessible: true
+            accessible: true,
+            isDirectory: stats.isDirectory()
+          };
+        } catch (fsError) {
+          // Data directory might not exist in all deployments
+          healthCheck.services.filesystem = {
+            status: 'degraded',
+            note: 'Data directory not accessible (may be normal in some deployments)',
+            error: fsError.code
           };
         }
       }
-    } catch (storageError) {
-      healthCheck.services.storage = {
-        status: 'degraded',
-        error: storageError.message
+    } catch (importError) {
+      // File system checks not available
+      healthCheck.services.filesystem = {
+        status: 'not_available',
+        note: 'File system checks not available in this environment'
       };
     }
 
     // Overall health determination
-    const unhealthyServices = Object.values(healthCheck.services)
-      .filter(service => service.status === 'unhealthy').length;
+    const criticalServices = ['storage', 'rss'];
+    const unhealthyServices = criticalServices.filter(service => 
+      healthCheck.services[service]?.status === 'unhealthy'
+    ).length;
+    
+    const degradedServices = Object.values(healthCheck.services)
+      .filter(service => service?.status === 'degraded').length;
     
     if (unhealthyServices > 0) {
       healthCheck.status = 'unhealthy';
-    } else {
-      const degradedServices = Object.values(healthCheck.services)
-        .filter(service => service.status === 'degraded').length;
-      
-      if (degradedServices > 0) {
-        healthCheck.status = 'degraded';
-      }
+    } else if (degradedServices > 0) {
+      healthCheck.status = 'degraded';
     }
+
+    // Add deployment information
+    healthCheck.deployment = {
+      storageMode: healthCheck.services.storage?.mode || 'unknown',
+      hasRedis: process.env.REDIS_URL ? 'configured' : 'not_configured',
+      platform: process.platform || 'unknown'
+    };
 
     // Response status based on health
     const httpStatus = healthCheck.status === 'healthy' ? 200 : 
@@ -138,6 +169,7 @@ export async function GET(request) {
         'Content-Type': 'application/json',
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'X-Health-Status': healthCheck.status,
+        'X-Storage-Mode': healthCheck.services.storage?.mode || 'unknown',
         'X-Service-Count': Object.keys(healthCheck.services).length.toString(),
         'X-Error-Count': healthCheck.errors.length.toString()
       }
@@ -149,7 +181,11 @@ export async function GET(request) {
       status: 'unhealthy',
       timestamp: new Date().toISOString(),
       error: error.message,
-      uptime: Math.floor((Date.now() - startTime) / 1000)
+      uptime: Math.floor((Date.now() - startTime) / 1000),
+      deployment: {
+        hasRedis: process.env.REDIS_URL ? 'configured' : 'not_configured',
+        platform: process.platform || 'unknown'
+      }
     };
 
     return new Response(JSON.stringify(errorResponse, null, 2), {
@@ -167,22 +203,26 @@ export async function GET(request) {
 // Simple health check for Docker HEALTHCHECK instruction
 export async function HEAD(request) {
   try {
-    // Minimal health check - just verify the service is responding
-    const { getRedis } = await import('../../../lib/kv');
-    const redis = await getRedis();
-    await redis.ping();
+    // Minimal health check - just verify core services
+    const { getStorage, getStorageStatus } = await import('../../../lib/kv');
+    const storage = await getStorage();
+    await storage.ping();
+    
+    const storageStatus = getStorageStatus();
     
     return new Response(null, {
       status: 200,
       headers: {
-        'X-Health-Status': 'healthy'
+        'X-Health-Status': 'healthy',
+        'X-Storage-Mode': storageStatus.mode
       }
     });
   } catch (error) {
     return new Response(null, {
       status: 503,
       headers: {
-        'X-Health-Status': 'unhealthy'
+        'X-Health-Status': 'unhealthy',
+        'X-Error': error.message.substring(0, 100)
       }
     });
   }
