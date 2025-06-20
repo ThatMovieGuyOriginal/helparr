@@ -4,15 +4,50 @@ import { trackEvent } from '../utils/analytics';
 
 export default function DemoView({ onGetStarted }) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchType, setSearchType] = useState('people');
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [selectedPerson, setSelectedPerson] = useState(null);
+  
+  // Filmography state
+  const [selectedSource, setSelectedSource] = useState(null);
+  const [sourceType, setSourceType] = useState('person');
+  const [roleType, setRoleType] = useState('actor');
   const [filmography, setFilmography] = useState([]);
   const [filmographyLoading, setFilmographyLoading] = useState(false);
+  
+  // Demo status
   const [error, setError] = useState('');
   const [demoMessage, setDemoMessage] = useState('');
-  const [searchesRemaining, setSearchesRemaining] = useState(null);
-  const [viewsRemaining, setViewsRemaining] = useState(null);
+  const [rateLimits, setRateLimits] = useState({
+    people: null,
+    collections: null,
+    companies: null,
+    filmography: null
+  });
+
+  // Search type configuration (same as main app)
+  const searchTypes = [
+    { 
+      key: 'people', 
+      label: '👤 People', 
+      placeholder: 'Search for actors, directors, producers...',
+      description: 'Find movies by specific people'
+    },
+    { 
+      key: 'collections', 
+      label: '🎬 Movie Series', 
+      placeholder: 'Search for Harry Potter, Marvel, Fast & Furious...',
+      description: 'Complete movie franchises and series'
+    },
+    { 
+      key: 'companies', 
+      label: '🏢 Studios', 
+      placeholder: 'Search for Disney, A24, Marvel Studios...',
+      description: 'Movies from production companies'
+    }
+  ];
+
+  const currentSearchType = searchTypes.find(type => type.key === searchType) || searchTypes[0];
 
   // Auto-search with debouncing
   useEffect(() => {
@@ -26,31 +61,40 @@ export default function DemoView({ onGetStarted }) {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, searchType]);
 
   const handleDemoSearch = async () => {
     setSearchLoading(true);
     setError('');
     
     try {
-      trackEvent('demo_search', { query: searchQuery.toLowerCase() });
+      trackEvent('demo_search', { query: searchQuery.toLowerCase(), searchType });
       
       const response = await fetch('/api/demo/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: searchQuery })
+        body: JSON.stringify({ query: searchQuery, searchType })
       });
       
       const data = await response.json();
       
       if (response.ok) {
-        setSearchResults(data.people || []);
-        setSearchesRemaining(data.remaining);
+        // Handle different response formats
+        const results = data[searchType] || data.people || [];
+        setSearchResults(results);
+        
+        // Update rate limits
+        setRateLimits(prev => ({
+          ...prev,
+          [searchType]: { remaining: data.remaining, limit: data.limit }
+        }));
+        
         setDemoMessage(data.message || '');
         
         trackEvent('demo_search_results', { 
           query: searchQuery.toLowerCase(),
-          resultCount: data.people?.length || 0,
+          searchType,
+          resultCount: results.length,
           totalResults: data.totalResults || 0,
           demo: true
         });
@@ -59,7 +103,7 @@ export default function DemoView({ onGetStarted }) {
         setSearchResults([]);
         
         if (data.rateLimited) {
-          setDemoMessage('You\'ve hit the demo limit! Sign up for unlimited searches.');
+          setDemoMessage(data.error);
         }
       }
     } catch (err) {
@@ -70,15 +114,18 @@ export default function DemoView({ onGetStarted }) {
     }
   };
 
-  const handlePersonClick = async (person, roleType = 'actor') => {
-    setSelectedPerson({ ...person, roleType });
+  const handleSourceClick = async (source, type, role = null) => {
+    setSelectedSource(source);
+    setSourceType(type);
+    if (role) setRoleType(role);
     setFilmographyLoading(true);
     setError('');
     
     try {
       trackEvent('demo_get_filmography', { 
-        personName: person.name,
-        roleType,
+        sourceName: source.name,
+        sourceType: type,
+        roleType: role,
         demo: true
       });
       
@@ -86,8 +133,9 @@ export default function DemoView({ onGetStarted }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          personId: person.id,
-          roleType
+          sourceId: source.id,
+          sourceType: type,
+          roleType: role || 'actor'
         })
       });
       
@@ -95,26 +143,33 @@ export default function DemoView({ onGetStarted }) {
       
       if (response.ok) {
         setFilmography(data.movies || []);
-        setViewsRemaining(data.remaining);
+        
+        // Update filmography rate limits
+        setRateLimits(prev => ({
+          ...prev,
+          filmography: { remaining: data.remaining, limit: 12 }
+        }));
+        
         setDemoMessage(data.message || '');
         
         trackEvent('demo_filmography_loaded', {
-          personName: person.name,
-          roleType,
+          sourceName: source.name,
+          sourceType: type,
+          roleType: role,
           movieCount: data.movies?.length || 0,
           totalFound: data.totalFound || 0,
           demo: true
         });
       } else {
-        setError(data.error || 'Failed to load filmography');
+        setError(data.error || 'Failed to load movies');
         setFilmography([]);
         
         if (data.rateLimited) {
-          setDemoMessage('Demo limit reached! Sign up for unlimited access.');
+          setDemoMessage(data.error);
         }
       }
     } catch (err) {
-      setError('Failed to load demo filmography');
+      setError('Failed to load demo movies');
       setFilmography([]);
     } finally {
       setFilmographyLoading(false);
@@ -122,15 +177,31 @@ export default function DemoView({ onGetStarted }) {
   };
 
   const clearDemo = () => {
-    setSelectedPerson(null);
+    setSelectedSource(null);
     setFilmography([]);
     setError('');
     setDemoMessage('');
   };
 
+  const getSourceIcon = (source) => {
+    if (source.type === 'collection') return '🎬';
+    if (source.type === 'company') return '🏢';
+    return '👤';
+  };
+
+  const getSourceImage = (source) => {
+    if (source.type === 'collection') {
+      return source.poster_path ? `https://image.tmdb.org/t/p/w92${source.poster_path}` : null;
+    }
+    if (source.type === 'company') {
+      return source.logo_path ? `https://image.tmdb.org/t/p/w92${source.logo_path}` : null;
+    }
+    return source.profile_path ? `https://image.tmdb.org/t/p/w92${source.profile_path}` : null;
+  };
+
   return (
     <div>
-      {/* Demo Banner */}
+      {/* Enhanced Demo Banner */}
       <div className="bg-gradient-to-r from-purple-600/20 to-blue-600/20 border border-purple-500/30 rounded-xl p-4 mb-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
@@ -138,22 +209,36 @@ export default function DemoView({ onGetStarted }) {
             <div>
               <div className="flex items-center space-x-2">
                 <h2 className="text-xl font-bold text-white">Try Helparr Demo</h2>
-                <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-full">LIVE DATA</span>
+                <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-full">
+                  LIVE DATA
+                </span>
               </div>
               <p className="text-purple-200 text-sm">
-                Search for any actor or director to see real movie data!
+                Search actors, directors, movie series, and studios with real TMDb data!
               </p>
             </div>
           </div>
           
-          {/* Usage Counter */}
-          <div className="text-right">
-            {searchesRemaining !== null && (
-              <div className="text-sm text-purple-200">
-                <div className="font-medium">{searchesRemaining}/8 searches left</div>
-                {viewsRemaining !== null && (
-                  <div className="text-xs text-purple-300">{viewsRemaining}/12 views left</div>
-                )}
+          {/* Enhanced Usage Counter */}
+          <div className="text-right text-xs">
+            {rateLimits.people && (
+              <div className="text-purple-200">
+                👤 {rateLimits.people.remaining}/{rateLimits.people.limit} people searches
+              </div>
+            )}
+            {rateLimits.collections && (
+              <div className="text-purple-200">
+                🎬 {rateLimits.collections.remaining}/{rateLimits.collections.limit} series searches
+              </div>
+            )}
+            {rateLimits.companies && (
+              <div className="text-purple-200">
+                🏢 {rateLimits.companies.remaining}/{rateLimits.companies.limit} studio searches
+              </div>
+            )}
+            {rateLimits.filmography && (
+              <div className="text-blue-200">
+                📋 {rateLimits.filmography.remaining}/{rateLimits.filmography.limit} filmography views
               </div>
             )}
           </div>
@@ -176,19 +261,46 @@ export default function DemoView({ onGetStarted }) {
         </div>
       )}
 
-      {/* Search Interface */}
-      {!selectedPerson && (
+      {/* Main Search Interface (same as main app) */}
+      {!selectedSource && (
         <div className="bg-slate-800 rounded-xl p-6 mb-6">
+          <h2 className="text-2xl font-bold text-white mb-6">Search Movies by Source</h2>
+          
+          {/* Search Type Selector (same as main app) */}
+          <div className="mb-6">
+            <div className="flex space-x-1 bg-slate-700/50 rounded-lg p-1 mb-4">
+              {searchTypes.map(type => (
+                <button
+                  key={type.key}
+                  onClick={() => {
+                    setSearchType(type.key);
+                    setSearchResults([]);
+                    trackEvent('demo_search_type_changed', { from: searchType, to: type.key });
+                  }}
+                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition-all duration-200 text-sm ${
+                    searchType === type.key
+                      ? 'bg-purple-600 text-white shadow-lg'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-600'
+                  }`}
+                >
+                  {type.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-sm text-slate-400">{currentSearchType.description}</p>
+          </div>
+          
+          {/* Search Input */}
           <div className="relative">
             <input
               type="text"
-              placeholder="Search for any actor, director, or producer..."
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
-                trackEvent('demo_interaction', { action: 'search_input' });
+                trackEvent('demo_interaction', { action: 'search_input', searchType });
               }}
-              className="w-full px-4 py-3 bg-slate-700 rounded-lg text-white placeholder-slate-400 pr-12"
+              placeholder={currentSearchType.placeholder}
+              className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:ring-2 focus:ring-purple-500 focus:border-transparent pr-12"
             />
             {searchLoading && (
               <div className="absolute right-3 top-3 animate-spin w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full"></div>
@@ -197,7 +309,25 @@ export default function DemoView({ onGetStarted }) {
 
           <div className="flex flex-wrap gap-2 mt-4">
             <span className="text-sm text-slate-400">Try searching:</span>
-            {['Ryan Gosling', 'Greta Gerwig', 'Anya Taylor-Joy', 'Denis Villeneuve'].map(name => (
+            {searchType === 'people' && ['Ryan Gosling', 'Greta Gerwig', 'Anya Taylor-Joy', 'Denis Villeneuve'].map(name => (
+              <button
+                key={name}
+                onClick={() => setSearchQuery(name)}
+                className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm rounded-full transition-colors"
+              >
+                {name}
+              </button>
+            ))}
+            {searchType === 'collections' && ['Marvel', 'Harry Potter', 'Fast Furious', 'Star Wars'].map(name => (
+              <button
+                key={name}
+                onClick={() => setSearchQuery(name)}
+                className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm rounded-full transition-colors"
+              >
+                {name}
+              </button>
+            ))}
+            {searchType === 'companies' && ['Disney', 'A24', 'Marvel Studios', 'Pixar'].map(name => (
               <button
                 key={name}
                 onClick={() => setSearchQuery(name)}
@@ -208,60 +338,120 @@ export default function DemoView({ onGetStarted }) {
             ))}
           </div>
 
-          {/* Search Results - SIMPLIFIED */}
+          {/* Enhanced Search Results */}
           {searchResults.length > 0 && (
-            <div className="mt-6 space-y-3">
-              {searchResults.map(person => (
-                <div key={person.id} className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
-                  <div className="flex items-center space-x-4">
-                    {person.profile_path ? (
-                      <img
-                        src={`https://image.tmdb.org/t/p/w92${person.profile_path}`}
-                        alt={person.name}
-                        className="w-16 h-16 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-16 h-16 bg-slate-600 rounded-full flex items-center justify-center text-2xl">
-                        👤
+            <div className="mt-6">
+              {searchType === 'people' && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {searchResults.map(person => (
+                    <div key={person.id} className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
+                      <div className="flex items-center space-x-4">
+                        {getSourceImage(person) ? (
+                          <img
+                            src={getSourceImage(person)}
+                            alt={person.name}
+                            className="w-16 h-16 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-16 h-16 bg-slate-600 rounded-full flex items-center justify-center text-2xl">
+                            {getSourceIcon(person)}
+                          </div>
+                        )}
+                        
+                        <div className="flex-1">
+                          <h3 className="font-medium text-white">{person.name}</h3>
+                          <p className="text-sm text-slate-400">{person.known_for_department}</p>
+                          {person.known_for && (
+                            <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                              Known for: {person.known_for}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    )}
-                    
-                    <div className="flex-1">
-                      <h3 className="font-medium text-white">{person.name}</h3>
-                      <p className="text-sm text-slate-400">{person.known_for_department}</p>
-                      {/* SIMPLIFIED: No special handling needed - API returns string */}
-                      {person.known_for && (
-                        <p className="text-xs text-slate-500 mt-1">
-                          Known for: {person.known_for}
-                        </p>
-                      )}
-                    </div>
-                  </div>
 
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {['actor', 'director', 'producer'].map(role => (
-                      <button
-                        key={role}
-                        onClick={() => handlePersonClick(person, role)}
-                        className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg transition-colors capitalize"
-                      >
-                        View as {role}
-                      </button>
-                    ))}
-                  </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {['actor', 'director', 'producer', 'sound', 'writer'].map(role => (
+                          <button
+                            key={role}
+                            onClick={() => handleSourceClick(person, 'person', role)}
+                            disabled={filmographyLoading}
+                            className="px-3 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-600 text-white text-sm rounded-lg transition-colors duration-200 capitalize"
+                          >
+                            {role}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
+
+              {(searchType === 'collections' || searchType === 'companies') && (
+                <div className="space-y-4">
+                  {searchResults.map(source => (
+                    <div key={source.id} className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
+                      <div className="flex items-center space-x-4">
+                        {getSourceImage(source) ? (
+                          <img
+                            src={getSourceImage(source)}
+                            alt={source.name}
+                            className={`w-16 h-16 object-cover ${
+                              source.type === 'company' ? 'rounded bg-white p-2' : 'rounded'
+                            }`}
+                          />
+                        ) : (
+                          <div className="w-16 h-16 bg-slate-600 rounded flex items-center justify-center text-2xl">
+                            {getSourceIcon(source)}
+                          </div>
+                        )}
+                        
+                        <div className="flex-1">
+                          <h3 className="font-medium text-white">{source.name}</h3>
+                          <div className="flex items-center space-x-4 text-sm text-slate-400">
+                            {source.type === 'collection' && source.movie_count && (
+                              <span>🎬 {source.movie_count} movies</span>
+                            )}
+                            {source.type === 'company' && source.origin_country && (
+                              <span>🌍 {source.origin_country}</span>
+                            )}
+                          </div>
+                          {(source.overview || source.description) && (
+                            <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                              {source.overview || source.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-4">
+                        <button
+                          onClick={() => handleSourceClick(source, source.type)}
+                          disabled={filmographyLoading}
+                          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-600 text-white rounded-lg transition-colors duration-200"
+                        >
+                          {filmographyLoading ? 'Loading...' : 
+                           source.type === 'company' ? 'View Studio Movies' :
+                           'View Collection Movies'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
       )}
 
-      {/* Filmography Display */}
-      {selectedPerson && (
+      {/* Enhanced Filmography Display */}
+      {selectedSource && (
         <div className="bg-slate-800 rounded-xl p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-bold text-white">
-              {selectedPerson.name}'s {selectedPerson.roleType} credits
+              {selectedSource.name}
+              {sourceType === 'person' && ` (${roleType})`}
+              {sourceType === 'collection' && ' Collection'}
+              {sourceType === 'company' && ' Movies'}
             </h3>
             <button
               onClick={clearDemo}
@@ -274,14 +464,14 @@ export default function DemoView({ onGetStarted }) {
           {filmographyLoading ? (
             <div className="text-center py-8">
               <div className="animate-spin w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-              <p className="text-slate-400">Loading filmography...</p>
+              <p className="text-slate-400">Loading movies...</p>
             </div>
           ) : filmography.length > 0 ? (
             <div>
               <div className="bg-yellow-600/20 border border-yellow-500 rounded-lg p-3 mb-4">
                 <p className="text-yellow-200 text-sm">
-                  🎬 Demo showing {filmography.length} recent movies (pre-selected). 
-                  Sign up to see complete filmography and make your own selections!
+                  🎬 Demo showing limited movies (pre-selected). 
+                  Sign up to see complete {sourceType === 'person' ? 'filmography' : 'catalog'} and make your own selections!
                 </p>
               </div>
 
@@ -326,7 +516,7 @@ export default function DemoView({ onGetStarted }) {
                   ✅ In the full version, you would now:
                 </p>
                 <ul className="text-green-200 text-sm space-y-1 ml-4">
-                  <li>• Select which movies you want</li>
+                  <li>• Select which movies you want from the complete {sourceType === 'person' ? 'filmography' : 'catalog'}</li>
                   <li>• Generate an RSS feed instantly</li>
                   <li>• Add the feed to Radarr</li>
                   <li>• Automatically download these movies</li>
@@ -336,32 +526,33 @@ export default function DemoView({ onGetStarted }) {
           ) : (
             <div className="text-center py-8">
               <p className="text-slate-400 mb-4">
-                No {selectedPerson.roleType} credits found for {selectedPerson.name}.
+                No movies found for {selectedSource.name}
+                {sourceType === 'person' && ` as ${roleType}`}.
               </p>
               <p className="text-slate-300 text-sm">
-                They might have credits in other roles. Sign up to explore their complete filmography!
+                They might have more content in the full version. Sign up to explore their complete catalog!
               </p>
             </div>
           )}
         </div>
       )}
 
-      {/* Value Props */}
+      {/* Enhanced Value Props */}
       <div className="grid md:grid-cols-3 gap-4 mb-8">
         <div className="bg-slate-800/50 p-4 rounded-lg">
-          <div className="text-2xl mb-2">🚀</div>
-          <h3 className="font-semibold mb-1">30 Second Setup</h3>
-          <p className="text-sm text-slate-400">Just need a free TMDb API key</p>
+          <div className="text-2xl mb-2">👤</div>
+          <h3 className="font-semibold mb-1">People Search</h3>
+          <p className="text-sm text-slate-400">Complete filmographies for actors, directors, producers, sound engineers, writers</p>
         </div>
         <div className="bg-slate-800/50 p-4 rounded-lg">
-          <div className="text-2xl mb-2">🔍</div>
-          <h3 className="font-semibold mb-1">Search Anyone</h3>
-          <p className="text-sm text-slate-400">Any actor, director, or producer worldwide</p>
+          <div className="text-2xl mb-2">🎬</div>
+          <h3 className="font-semibold mb-1">Movie Series</h3>
+          <p className="text-sm text-slate-400">Complete franchises and collections - Marvel, Harry Potter, Fast & Furious</p>
         </div>
         <div className="bg-slate-800/50 p-4 rounded-lg">
-          <div className="text-2xl mb-2">📡</div>
-          <h3 className="font-semibold mb-1">Auto-sync to Radarr</h3>
-          <p className="text-sm text-slate-400">Generate RSS feed, Radarr does the rest</p>
+          <div className="text-2xl mb-2">🏢</div>
+          <h3 className="font-semibold mb-1">Studio Catalogs</h3>
+          <p className="text-sm text-slate-400">Entire production company filmographies - Disney, A24, Marvel Studios</p>
         </div>
       </div>
 
