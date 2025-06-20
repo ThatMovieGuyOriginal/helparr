@@ -1,6 +1,7 @@
 // components/DemoView.jsx
 import { useState, useEffect } from 'react';
 import { trackEvent } from '../utils/analytics';
+import HelpView from './views/HelpView';
 
 export default function DemoView({ onGetStarted }) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -18,6 +19,7 @@ export default function DemoView({ onGetStarted }) {
   // Demo status
   const [error, setError] = useState('');
   const [demoMessage, setDemoMessage] = useState('');
+  const [showHelp, setShowHelp] = useState(false);
   const [rateLimits, setRateLimits] = useState({
     people: null,
     collections: null,
@@ -219,28 +221,42 @@ export default function DemoView({ onGetStarted }) {
             </div>
           </div>
           
-          {/* Enhanced Usage Counter */}
-          <div className="text-right text-xs">
-            {rateLimits.people && (
-              <div className="text-purple-200">
-                👤 {rateLimits.people.remaining}/{rateLimits.people.limit} people searches
-              </div>
-            )}
-            {rateLimits.collections && (
-              <div className="text-purple-200">
-                🎬 {rateLimits.collections.remaining}/{rateLimits.collections.limit} series searches
-              </div>
-            )}
-            {rateLimits.companies && (
-              <div className="text-purple-200">
-                🏢 {rateLimits.companies.remaining}/{rateLimits.companies.limit} studio searches
-              </div>
-            )}
-            {rateLimits.filmography && (
-              <div className="text-blue-200">
-                📋 {rateLimits.filmography.remaining}/{rateLimits.filmography.limit} filmography views
-              </div>
-            )}
+          {/* Enhanced Usage Counter with Help */}
+          <div className="text-right">
+            <div className="text-xs space-y-1">
+              {rateLimits.people && (
+                <div className="text-purple-200">
+                  👤 {rateLimits.people.remaining}/{rateLimits.people.limit} people searches
+                </div>
+              )}
+              {rateLimits.collections && (
+                <div className="text-purple-200">
+                  🎬 {rateLimits.collections.remaining}/{rateLimits.collections.limit} series searches
+                </div>
+              )}
+              {rateLimits.companies && (
+                <div className="text-purple-200">
+                  🏢 {rateLimits.companies.remaining}/{rateLimits.companies.limit} studio searches
+                </div>
+              )}
+              {rateLimits.filmography && (
+                <div className="text-blue-200">
+                  📋 {rateLimits.filmography.remaining}/{rateLimits.filmography.limit} filmography views
+                </div>
+              )}
+            </div>
+            
+            {/* Help Button */}
+            <button
+              onClick={() => {
+                setShowHelp(true);
+                trackEvent('demo_help_opened');
+              }}
+              className="mt-2 px-3 py-1 bg-slate-600/50 hover:bg-slate-500/50 text-slate-200 hover:text-white text-xs rounded-full transition-colors duration-200 flex items-center space-x-1"
+            >
+              <span>❓</span>
+              <span>Help</span>
+            </button>
           </div>
         </div>
       </div>
@@ -570,6 +586,73 @@ export default function DemoView({ onGetStarted }) {
       <p className="text-center text-sm text-slate-500 mt-4">
         No search restrictions • Complete filmographies • 100% free • No credit card
       </p>
+
+      {/* Help Modal */}
+      {showHelp && (
+        <div className="fixed inset-0 z-50 bg-slate-900/95 backdrop-blur-sm">
+          <div className="h-full flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-slate-700">
+              <div className="flex items-center space-x-3">
+                <div className="text-2xl">🎬</div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">Helparr Help Guide</h2>
+                  <p className="text-sm text-slate-400">Complete guide to using Helparr</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowHelp(false);
+                  trackEvent('demo_help_closed');
+                }}
+                className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors duration-200"
+                aria-label="Close help"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-auto">
+              <div className="max-w-4xl mx-auto">
+                <HelpView />
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 border-t border-slate-700 bg-slate-800/50">
+              <div className="max-w-4xl mx-auto flex items-center justify-between">
+                <div className="text-sm text-slate-400">
+                  👆 This help guide is available throughout the app
+                </div>
+                <div className="flex space-x-3">
+                  <button
+                    onClick={() => {
+                      setShowHelp(false);
+                      trackEvent('demo_help_closed');
+                    }}
+                    className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg transition-colors duration-200"
+                  >
+                    Close Help
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowHelp(false);
+                      onGetStarted();
+                      trackEvent('demo_help_get_started');
+                    }}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors duration-200"
+                  >
+                    Get Started Now →
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
