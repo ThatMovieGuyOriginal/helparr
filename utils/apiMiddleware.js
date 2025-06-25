@@ -2,6 +2,7 @@
 // Middleware utilities for API routes
 
 const { createValidationMiddleware } = require('./validation.js');
+const { createRequestLoggingMiddleware } = require('./requestLogging.js');
 
 /**
  * Rate limiting functionality
@@ -252,6 +253,8 @@ function combineMiddleware(...middlewares) {
     let currentRequest = request;
     const responseHeaders = {};
     let rateLimitInfo = null;
+    let logResponse = null;
+    let correlationId = null;
 
     for (const middleware of middlewares) {
       const result = await middleware(currentRequest);
@@ -260,13 +263,19 @@ function combineMiddleware(...middlewares) {
         // Add any accumulated headers to error response
         return {
           ...result,
-          headers: { ...responseHeaders, ...(result.headers || {}) }
+          headers: { ...responseHeaders, ...(result.headers || {}) },
+          logResponse,
+          correlationId
         };
       }
 
       // Handle OPTIONS request
       if (result.isOptions) {
-        return result;
+        return {
+          ...result,
+          logResponse,
+          correlationId
+        };
       }
 
       // Accumulate headers
@@ -283,13 +292,23 @@ function combineMiddleware(...middlewares) {
       if (result.rateLimitInfo) {
         rateLimitInfo = result.rateLimitInfo;
       }
+
+      // Store logging function and correlation ID from logging middleware
+      if (result.logResponse) {
+        logResponse = result.logResponse;
+      }
+      if (result.correlationId) {
+        correlationId = result.correlationId;
+      }
     }
 
     return {
       valid: true,
       request: currentRequest,
       headers: responseHeaders,
-      rateLimitInfo
+      rateLimitInfo,
+      logResponse,
+      correlationId
     };
   };
 }
@@ -303,11 +322,20 @@ function createApiHandler(options = {}) {
     rateLimit,
     sizeLimit = 1024 * 1024, // 1MB default
     cors = true,
-    errorHandling = true
+    errorHandling = true,
+    logging = true
   } = options;
 
   return function(handler) {
     const middlewares = [];
+    let requestLogger = null;
+
+    // Add logging middleware first to capture all requests
+    if (logging) {
+      const loggingOptions = typeof logging === 'object' ? logging : {};
+      const loggingMiddleware = createRequestLoggingMiddleware(loggingOptions);
+      middlewares.push(loggingMiddleware);
+    }
 
     // Add CORS middleware
     if (cors) {
@@ -337,7 +365,7 @@ function createApiHandler(options = {}) {
       const middlewareResult = await combinedMiddleware(request);
 
       if (!middlewareResult.valid) {
-        return Response.json(
+        const errorResponse = Response.json(
           { 
             error: middlewareResult.error,
             ...(middlewareResult.details && { details: middlewareResult.details })
@@ -347,14 +375,34 @@ function createApiHandler(options = {}) {
             headers: middlewareResult.headers
           }
         );
+
+        // Log error response if logger available
+        if (middlewareResult.logResponse) {
+          middlewareResult.logResponse({
+            status: middlewareResult.status,
+            size: JSON.stringify({ error: middlewareResult.error }).length
+          });
+        }
+
+        return errorResponse;
       }
 
       // Handle OPTIONS request
       if (middlewareResult.isOptions) {
-        return new Response(null, {
+        const optionsResponse = new Response(null, {
           status: 204,
           headers: middlewareResult.headers
         });
+
+        // Log OPTIONS response if logger available
+        if (middlewareResult.logResponse) {
+          middlewareResult.logResponse({
+            status: 204,
+            size: 0
+          });
+        }
+
+        return optionsResponse;
       }
 
       // Call the actual handler with processed request
@@ -369,6 +417,16 @@ function createApiHandler(options = {}) {
         for (const [key, value] of Object.entries(middlewareResult.headers)) {
           response.headers.set(key, value);
         }
+      }
+
+      // Log successful response if logger available
+      if (middlewareResult.logResponse) {
+        const responseBody = await response.clone().text();
+        middlewareResult.logResponse({
+          status: response.status,
+          size: responseBody.length,
+          headers: Object.fromEntries(response.headers.entries())
+        });
       }
 
       return response;
@@ -386,6 +444,7 @@ module.exports = {
   createSizeLimitMiddleware,
   createRateLimitMiddleware,
   createCorsMiddleware,
+  createRequestLoggingMiddleware,
   withErrorHandling,
   combineMiddleware,
   createApiHandler

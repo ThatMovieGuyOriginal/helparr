@@ -1,5 +1,12 @@
 // jest.setup.js
-require('@testing-library/jest-dom');
+// Only load testing-library for browser environment tests
+if (typeof window !== 'undefined') {
+  try {
+    require('@testing-library/jest-dom');
+  } catch (error) {
+    console.warn('Testing library not available:', error.message);
+  }
+}
 
 // Mock window.crypto for UUID generation in tests
 Object.defineProperty(global, 'crypto', {
