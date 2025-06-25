@@ -5,6 +5,7 @@ const { createValidationMiddleware } = require('./validation.js');
 const { createRequestLoggingMiddleware } = require('./requestLogging.js');
 const { normalizeError, isHttpError } = require('./httpErrors.js');
 const { createCacheMiddleware, applyCacheHeaders, createNotModifiedResponse } = require('./cacheHeaders.js');
+const { createApiKeyMiddleware } = require('./apiKeyAuth.js');
 
 /**
  * Rate limiting functionality
@@ -251,6 +252,7 @@ function combineMiddleware(...middlewares) {
     let cacheHeaders = null;
     let notModified = false;
     let status = null;
+    let apiKeyInfo = null;
 
     for (const middleware of middlewares) {
       const result = await middleware(currentRequest);
@@ -307,6 +309,11 @@ function combineMiddleware(...middlewares) {
       if (result.cacheHeaders) {
         cacheHeaders = { ...cacheHeaders, ...result.cacheHeaders };
       }
+
+      // Store API key info
+      if (result.apiKeyInfo) {
+        apiKeyInfo = result.apiKeyInfo;
+      }
     }
 
     // Merge cache headers into response headers
@@ -323,7 +330,8 @@ function combineMiddleware(...middlewares) {
       correlationId,
       cacheHeaders,
       notModified,
-      status
+      status,
+      apiKeyInfo
     };
   };
 }
@@ -339,7 +347,8 @@ function createApiHandler(options = {}) {
     cors = true,
     errorHandling = true,
     logging = true,
-    cache = false
+    cache = false,
+    apiKey = false
   } = options;
 
   return function(handler) {
@@ -357,6 +366,12 @@ function createApiHandler(options = {}) {
     if (cors) {
       const corsOptions = typeof cors === 'object' ? cors : {};
       middlewares.push(createCorsMiddleware(corsOptions));
+    }
+
+    // Add API key middleware (before rate limiting so each key can have its own limits)
+    if (apiKey) {
+      const apiKeyOptions = typeof apiKey === 'object' ? apiKey : {};
+      middlewares.push(createApiKeyMiddleware(apiKeyOptions));
     }
 
     // Add size limit middleware
@@ -442,11 +457,18 @@ function createApiHandler(options = {}) {
         return notModifiedResponse;
       }
 
+      // Build context object
+      const context = {
+        ...(args[1] || {}), // Preserve existing context
+        apiKeyInfo: middlewareResult.apiKeyInfo,
+        correlationId: middlewareResult.correlationId
+      };
+
       // Call the actual handler with processed request
       const response = await handler(
         middlewareResult.request || request,
         middlewareResult.data,
-        ...args
+        context
       );
 
       // Add accumulated headers to response
@@ -483,6 +505,7 @@ module.exports = {
   createCorsMiddleware,
   createRequestLoggingMiddleware,
   createCacheMiddleware,
+  createApiKeyMiddleware,
   withErrorHandling,
   combineMiddleware,
   createApiHandler
