@@ -2,6 +2,9 @@
 // Middleware utilities for API routes
 
 const { createValidationMiddleware } = require('./validation.js');
+const { createRequestLoggingMiddleware } = require('./requestLogging.js');
+const { normalizeError, isHttpError } = require('./httpErrors.js');
+const { createCacheMiddleware, applyCacheHeaders, createNotModifiedResponse } = require('./cacheHeaders.js');
 
 /**
  * Rate limiting functionality
@@ -212,34 +215,25 @@ function withErrorHandling(handler) {
     } catch (error) {
       console.error('API Error:', error);
       
-      // Determine appropriate error response
-      let status = 500;
-      let message = 'Internal server error';
+      // Normalize error to HTTP error format
+      const httpError = normalizeError(error);
       
-      if (error.name === 'ValidationError') {
-        status = 400;
-        message = error.message;
-      } else if (error.name === 'UnauthorizedError') {
-        status = 401;
-        message = 'Unauthorized';
-      } else if (error.name === 'ForbiddenError') {
-        status = 403;
-        message = 'Forbidden';
-      } else if (error.name === 'NotFoundError') {
-        status = 404;
-        message = 'Not found';
-      } else if (error.message.includes('Invalid TMDb')) {
-        status = 502;
-        message = error.message;
-      }
+      // Build response body
+      const responseBody = {
+        error: httpError.message,
+        code: httpError.code,
+        ...(httpError.details && { details: httpError.details }),
+        ...(process.env.NODE_ENV === 'development' && httpError.stack && { stack: httpError.stack })
+      };
 
-      return Response.json(
-        { 
-          error: message,
-          ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
-        }, 
-        { status }
-      );
+      return Response.json(responseBody, { 
+        status: httpError.statusCode,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Error-Code': httpError.code || 'UNKNOWN_ERROR',
+          'X-Error-Type': httpError.name
+        }
+      });
     }
   };
 }
@@ -252,6 +246,11 @@ function combineMiddleware(...middlewares) {
     let currentRequest = request;
     const responseHeaders = {};
     let rateLimitInfo = null;
+    let logResponse = null;
+    let correlationId = null;
+    let cacheHeaders = null;
+    let notModified = false;
+    let status = null;
 
     for (const middleware of middlewares) {
       const result = await middleware(currentRequest);
@@ -260,13 +259,25 @@ function combineMiddleware(...middlewares) {
         // Add any accumulated headers to error response
         return {
           ...result,
-          headers: { ...responseHeaders, ...(result.headers || {}) }
+          headers: { ...responseHeaders, ...(result.headers || {}) },
+          logResponse,
+          correlationId
         };
       }
 
       // Handle OPTIONS request
       if (result.isOptions) {
-        return result;
+        return {
+          ...result,
+          logResponse,
+          correlationId
+        };
+      }
+
+      // Handle 304 Not Modified
+      if (result.notModified) {
+        notModified = true;
+        status = result.status || 304;
       }
 
       // Accumulate headers
@@ -283,13 +294,36 @@ function combineMiddleware(...middlewares) {
       if (result.rateLimitInfo) {
         rateLimitInfo = result.rateLimitInfo;
       }
+
+      // Store logging function and correlation ID from logging middleware
+      if (result.logResponse) {
+        logResponse = result.logResponse;
+      }
+      if (result.correlationId) {
+        correlationId = result.correlationId;
+      }
+
+      // Store cache headers
+      if (result.cacheHeaders) {
+        cacheHeaders = { ...cacheHeaders, ...result.cacheHeaders };
+      }
+    }
+
+    // Merge cache headers into response headers
+    if (cacheHeaders) {
+      Object.assign(responseHeaders, cacheHeaders);
     }
 
     return {
       valid: true,
       request: currentRequest,
       headers: responseHeaders,
-      rateLimitInfo
+      rateLimitInfo,
+      logResponse,
+      correlationId,
+      cacheHeaders,
+      notModified,
+      status
     };
   };
 }
@@ -303,11 +337,21 @@ function createApiHandler(options = {}) {
     rateLimit,
     sizeLimit = 1024 * 1024, // 1MB default
     cors = true,
-    errorHandling = true
+    errorHandling = true,
+    logging = true,
+    cache = false
   } = options;
 
   return function(handler) {
     const middlewares = [];
+    let requestLogger = null;
+
+    // Add logging middleware first to capture all requests
+    if (logging) {
+      const loggingOptions = typeof logging === 'object' ? logging : {};
+      const loggingMiddleware = createRequestLoggingMiddleware(loggingOptions);
+      middlewares.push(loggingMiddleware);
+    }
 
     // Add CORS middleware
     if (cors) {
@@ -330,6 +374,12 @@ function createApiHandler(options = {}) {
       middlewares.push(createValidationMiddleware(validation));
     }
 
+    // Add cache middleware
+    if (cache) {
+      const cacheOptions = typeof cache === 'object' ? cache : {};
+      middlewares.push(createCacheMiddleware(cacheOptions));
+    }
+
     const combinedMiddleware = combineMiddleware(...middlewares);
 
     const finalHandler = async (request, ...args) => {
@@ -337,7 +387,7 @@ function createApiHandler(options = {}) {
       const middlewareResult = await combinedMiddleware(request);
 
       if (!middlewareResult.valid) {
-        return Response.json(
+        const errorResponse = Response.json(
           { 
             error: middlewareResult.error,
             ...(middlewareResult.details && { details: middlewareResult.details })
@@ -347,14 +397,49 @@ function createApiHandler(options = {}) {
             headers: middlewareResult.headers
           }
         );
+
+        // Log error response if logger available
+        if (middlewareResult.logResponse) {
+          middlewareResult.logResponse({
+            status: middlewareResult.status,
+            size: JSON.stringify({ error: middlewareResult.error }).length
+          });
+        }
+
+        return errorResponse;
       }
 
       // Handle OPTIONS request
       if (middlewareResult.isOptions) {
-        return new Response(null, {
+        const optionsResponse = new Response(null, {
           status: 204,
           headers: middlewareResult.headers
         });
+
+        // Log OPTIONS response if logger available
+        if (middlewareResult.logResponse) {
+          middlewareResult.logResponse({
+            status: 204,
+            size: 0
+          });
+        }
+
+        return optionsResponse;
+      }
+
+      // Handle 304 Not Modified responses
+      if (middlewareResult.notModified) {
+        const notModifiedResponse = createNotModifiedResponse(middlewareResult.cacheHeaders);
+
+        // Log 304 response if logger available
+        if (middlewareResult.logResponse) {
+          middlewareResult.logResponse({
+            status: 304,
+            size: 0
+          });
+        }
+
+        return notModifiedResponse;
       }
 
       // Call the actual handler with processed request
@@ -369,6 +454,16 @@ function createApiHandler(options = {}) {
         for (const [key, value] of Object.entries(middlewareResult.headers)) {
           response.headers.set(key, value);
         }
+      }
+
+      // Log successful response if logger available
+      if (middlewareResult.logResponse) {
+        const responseBody = await response.clone().text();
+        middlewareResult.logResponse({
+          status: response.status,
+          size: responseBody.length,
+          headers: Object.fromEntries(response.headers.entries())
+        });
       }
 
       return response;
@@ -386,6 +481,8 @@ module.exports = {
   createSizeLimitMiddleware,
   createRateLimitMiddleware,
   createCorsMiddleware,
+  createRequestLoggingMiddleware,
+  createCacheMiddleware,
   withErrorHandling,
   combineMiddleware,
   createApiHandler
