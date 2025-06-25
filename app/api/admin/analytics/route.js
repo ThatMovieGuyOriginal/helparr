@@ -1,9 +1,27 @@
 // app/api/admin/analytics/route.js
+import { createApiHandler } from '../../../../utils/apiMiddleware';
 import { getRedis } from '../../../../lib/kv';
 
 const startTime = Date.now();
 
-export async function GET() {
+// Admin API key from environment
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'hk_admin_development_key_123456789';
+
+// Create handler with API key authentication
+const handler = createApiHandler({
+  apiKey: {
+    apiKeys: [ADMIN_API_KEY],
+    excludePaths: []
+  },
+  cors: true,
+  logging: true,
+  rateLimit: {
+    maxRequests: 10,
+    windowMs: 60 * 1000 // 10 requests per minute for admin endpoints
+  }
+});
+
+export const GET = handler(async (request, data, context) => {
   try {
     const redis = await getRedis();
     const today = new Date().toISOString().split('T')[0];
@@ -120,7 +138,7 @@ export async function GET() {
     
     return Response.json(fallbackData);
   }
-}
+});
 
 // Get total number of tenants
 async function getTotalTenants(redis) {
