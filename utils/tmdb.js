@@ -2,7 +2,7 @@
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 
-export async function searchPeople(query, apiKey) {
+async function searchPeople(query, apiKey) {
   const url = `${TMDB_BASE}/search/person?api_key=${apiKey}&query=${encodeURIComponent(query)}`;
   const res = await fetch(url);
   
@@ -21,7 +21,7 @@ export async function searchPeople(query, apiKey) {
   }));
 }
 
-export async function getPersonMovies(personId, apiKey) {
+async function getPersonMovies(personId, apiKey) {
   const url = `${TMDB_BASE}/person/${personId}/movie_credits?api_key=${apiKey}`;
   const res = await fetch(url);
   
@@ -51,7 +51,7 @@ export async function getPersonMovies(personId, apiKey) {
     .slice(0, 50); // Limit to 50 most recent
 }
 
-export async function getMovieDetails(movieIds, apiKey) {
+async function getMovieDetails(movieIds, apiKey) {
   // Fetch IMDB IDs for RSS feed
   const movies = [];
   
@@ -77,3 +77,10 @@ export async function getMovieDetails(movieIds, apiKey) {
   
   return movies;
 }
+
+// CommonJS exports
+module.exports = {
+  searchPeople,
+  getPersonMovies,
+  getMovieDetails
+};

@@ -130,7 +130,7 @@ develop-eggs/
 downloads/
 eggs/
 .eggs/
-lib/
+# lib/  # Commented out - lib/ contains application code
 lib64/
 parts/
 sdist/
