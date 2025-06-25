@@ -1,5 +1,5 @@
 // jest.setup.js
-import '@testing-library/jest-dom';
+require('@testing-library/jest-dom');
 
 // Mock window.crypto for UUID generation in tests
 Object.defineProperty(global, 'crypto', {
