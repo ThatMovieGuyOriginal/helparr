@@ -4,6 +4,7 @@
 const { createValidationMiddleware } = require('./validation.js');
 const { createRequestLoggingMiddleware } = require('./requestLogging.js');
 const { normalizeError, isHttpError } = require('./httpErrors.js');
+const { createCacheMiddleware, applyCacheHeaders, createNotModifiedResponse } = require('./cacheHeaders.js');
 
 /**
  * Rate limiting functionality
@@ -247,6 +248,9 @@ function combineMiddleware(...middlewares) {
     let rateLimitInfo = null;
     let logResponse = null;
     let correlationId = null;
+    let cacheHeaders = null;
+    let notModified = false;
+    let status = null;
 
     for (const middleware of middlewares) {
       const result = await middleware(currentRequest);
@@ -268,6 +272,12 @@ function combineMiddleware(...middlewares) {
           logResponse,
           correlationId
         };
+      }
+
+      // Handle 304 Not Modified
+      if (result.notModified) {
+        notModified = true;
+        status = result.status || 304;
       }
 
       // Accumulate headers
@@ -292,6 +302,16 @@ function combineMiddleware(...middlewares) {
       if (result.correlationId) {
         correlationId = result.correlationId;
       }
+
+      // Store cache headers
+      if (result.cacheHeaders) {
+        cacheHeaders = { ...cacheHeaders, ...result.cacheHeaders };
+      }
+    }
+
+    // Merge cache headers into response headers
+    if (cacheHeaders) {
+      Object.assign(responseHeaders, cacheHeaders);
     }
 
     return {
@@ -300,7 +320,10 @@ function combineMiddleware(...middlewares) {
       headers: responseHeaders,
       rateLimitInfo,
       logResponse,
-      correlationId
+      correlationId,
+      cacheHeaders,
+      notModified,
+      status
     };
   };
 }
@@ -315,7 +338,8 @@ function createApiHandler(options = {}) {
     sizeLimit = 1024 * 1024, // 1MB default
     cors = true,
     errorHandling = true,
-    logging = true
+    logging = true,
+    cache = false
   } = options;
 
   return function(handler) {
@@ -348,6 +372,12 @@ function createApiHandler(options = {}) {
     // Add validation middleware
     if (validation) {
       middlewares.push(createValidationMiddleware(validation));
+    }
+
+    // Add cache middleware
+    if (cache) {
+      const cacheOptions = typeof cache === 'object' ? cache : {};
+      middlewares.push(createCacheMiddleware(cacheOptions));
     }
 
     const combinedMiddleware = combineMiddleware(...middlewares);
@@ -397,6 +427,21 @@ function createApiHandler(options = {}) {
         return optionsResponse;
       }
 
+      // Handle 304 Not Modified responses
+      if (middlewareResult.notModified) {
+        const notModifiedResponse = createNotModifiedResponse(middlewareResult.cacheHeaders);
+
+        // Log 304 response if logger available
+        if (middlewareResult.logResponse) {
+          middlewareResult.logResponse({
+            status: 304,
+            size: 0
+          });
+        }
+
+        return notModifiedResponse;
+      }
+
       // Call the actual handler with processed request
       const response = await handler(
         middlewareResult.request || request,
@@ -437,6 +482,7 @@ module.exports = {
   createRateLimitMiddleware,
   createCorsMiddleware,
   createRequestLoggingMiddleware,
+  createCacheMiddleware,
   withErrorHandling,
   combineMiddleware,
   createApiHandler
