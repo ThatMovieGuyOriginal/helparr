@@ -90,17 +90,23 @@ Visit [helparr.vercel.app](https://helparr.vercel.app) and search for any actor 
 - **Routing**: Next.js App Router with API routes
 
 ### Backend Infrastructure
-- **API**: Next.js serverless functions
-- **Database**: Redis for tenant data and caching
+- **API**: Next.js serverless functions with comprehensive middleware stack
+- **Database**: Redis for tenant data with automatic memory fallback
 - **External**: TMDb API for movie/person data
-- **Security**: HMAC-SHA256 signatures for API authentication
+- **Security**: HMAC-SHA256 signatures + API key authentication for admin endpoints
+- **Middleware**: Rate limiting, CORS, request logging, input validation, error handling
+- **Monitoring**: Health checks for Redis, TMDb API, and filesystem
+- **Caching**: HTTP cache headers with ETag support for static resources
 
 ### Key Technical Features
-- **Rate Limiting**: Smart queuing prevents TMDb API limits
+- **Rate Limiting**: Multi-layer rate limiting (per-IP, per-user, per-API-key)
 - **Streaming Data**: Progressive loading for large datasets
 - **Deduplication Engine**: IMDB-based movie deduplication with source tracking
 - **Auto-sync**: Debounced RSS updates with 5-second delay
-- **Error Handling**: Graceful fallbacks and retry logic
+- **Error Handling**: Structured error classes with proper HTTP status codes
+- **Request Tracking**: Correlation IDs for distributed tracing
+- **Input Validation**: XSS protection and sanitization for all inputs
+- **Performance**: Response caching, ETags, and conditional requests
 
 ## 🔌 API Endpoints
 
@@ -108,6 +114,7 @@ Visit [helparr.vercel.app](https://helparr.vercel.app) and search for any actor 
 ```bash
 GET  /api/rss/[tenant]           # RSS feed for Radarr (HMAC protected)
 GET  /api/health                 # Health check for monitoring
+GET  /api/static/[resource]      # Static resources with cache headers
 POST /api/demo/search            # Demo people search (rate limited)
 POST /api/demo/filmography       # Demo filmography (rate limited)
 ```
@@ -123,10 +130,19 @@ POST /api/get-source-movies      # Get movies from collections/companies
 POST /api/sync-list              # Update RSS feed with selected movies
 ```
 
+### Admin Endpoints (API Key Required)
+```bash
+GET  /api/admin/keys             # List all API keys
+POST /api/admin/keys             # Create new API key
+DELETE /api/admin/keys/[id]      # Revoke API key
+```
+
 ### Rate Limiting
 - **Demo endpoints**: 8-12 requests per hour per IP
 - **Authenticated**: 20 requests per minute per user
+- **Admin endpoints**: 10 requests per minute per API key
 - **TMDb proxy**: Smart queuing to stay under 50 req/sec
+- **Per-API-key limits**: Configurable rate limits for each key
 
 ## 🏗️ Development
 
@@ -145,6 +161,10 @@ VERCEL_AUTOMATION_BYPASS_SECRET=secret  # Vercel protection bypass
 TMDB_DEMO_API_KEY=demo_key              # Public demo functionality
 TMDB_HEALTH_CHECK=true                  # Enable TMDb API health monitoring
 
+# API Authentication
+ADMIN_API_KEY=hk_your_key_here          # Admin API key for management endpoints
+ADMIN_API_KEY_HASH=sha256_hash          # Alternative: Use hashed key for security
+
 # Docker-specific
 HELPARR_PORT=3000                       # Port for Docker deployment
 HELPARR_INSTANCE_NAME="My Helparr"      # Custom instance name
@@ -161,6 +181,9 @@ REDIS_POLICY=allkeys-lru                # Redis eviction policy
 git clone https://github.com/ThatMovieGuyOriginal/helparr.git
 cd helparr
 npm install
+
+# Generate admin API key (optional)
+node scripts/generate-admin-key.js
 
 # Start development server
 npm run dev
@@ -181,7 +204,10 @@ npm start
 │   ├── get-*/                 # Data retrieval endpoints
 │   ├── sync-list/             # RSS feed updates
 │   ├── rss/[tenant]/          # RSS generation
-│   └── demo/                  # Rate-limited demo endpoints
+│   ├── demo/                  # Rate-limited demo endpoints
+│   ├── admin/                 # Admin management endpoints
+│   ├── health/                # System health monitoring
+│   └── static/                # Static resource serving
 ├── components/                # React components
 │   ├── views/                 # Main application views
 │   ├── ui/                    # Reusable UI components
@@ -189,6 +215,17 @@ npm start
 ├── hooks/                     # Custom React hooks
 ├── lib/                       # Server-side utilities
 ├── utils/                     # Shared utilities
+│   ├── apiMiddleware.js       # Comprehensive middleware stack
+│   ├── validation.js          # Input validation and sanitization
+│   ├── apiKeyAuth.js          # API key authentication
+│   ├── corsConfig.js          # CORS configuration
+│   ├── requestLogging.js      # Request/response logging
+│   ├── httpErrors.js          # Structured error handling
+│   └── cacheHeaders.js        # HTTP caching middleware
+├── scripts/                   # Utility scripts
+│   └── generate-admin-key.js  # Admin key generation
+├── docs/                      # Documentation
+│   └── api-authentication.md  # API auth guide
 └── styles/                    # Global styles
 ```
 
@@ -257,8 +294,9 @@ pm2 start npm --name "helparr" -- start
 ### Health Checks
 - **Endpoint**: `GET /api/health`
 - **Docker**: Built-in health check every 30s using curl
-- **Metrics**: Storage connectivity, RSS generation, uptime, storage mode
+- **Metrics**: Storage connectivity, RSS generation, TMDb API, filesystem, uptime
 - **Storage Monitoring**: Automatic detection of Redis vs memory mode
+- **API Monitoring**: TMDb connection and response time tracking
 
 ```json
 {
@@ -267,24 +305,66 @@ pm2 start npm --name "helparr" -- start
     "storage": {
       "status": "healthy", 
       "mode": "redis",
-      "redisConnected": true
+      "redisConnected": true,
+      "ping": "1.23ms"
     },
     "rss": {
       "status": "healthy",
-      "cacheSize": 5
+      "cacheSize": 5,
+      "lastGenerated": "2025-06-25T10:30:00Z"
+    },
+    "tmdb": {
+      "status": "healthy",
+      "responseTime": "234ms",
+      "lastChecked": "2025-06-25T10:35:00Z"
+    },
+    "filesystem": {
+      "status": "healthy",
+      "writable": true,
+      "tempDir": "/tmp"
     }
   },
   "deployment": {
     "storageMode": "redis",
-    "hasRedis": "configured"
+    "hasRedis": "configured",
+    "nodeVersion": "18.17.0",
+    "uptime": "2d 14h 23m"
   }
 }
 ```
 
 ### Logging
 - **Client**: Privacy-focused event tracking for conversion analysis
-- **Server**: Request logging with rate limit monitoring and storage mode tracking
+- **Server**: Structured logging with correlation IDs for request tracing
 - **RSS**: Access tracking for countdown calculation and usage analytics
+- **API Keys**: Usage tracking and rate limit monitoring per key
+- **Middleware**: Performance metrics for each middleware layer
+
+## 🔒 Security Features
+
+### API Protection
+- **HMAC Authentication**: SHA-256 signatures for user API calls
+- **API Key Authentication**: Secure key-based auth for admin endpoints
+- **Input Validation**: XSS protection and sanitization on all inputs
+- **Rate Limiting**: Multi-layer protection against abuse
+- **CORS Configuration**: Environment-aware CORS policies
+- **Request Size Limits**: Configurable limits to prevent DoS
+- **Error Handling**: No sensitive data exposure in error messages
+
+### Admin API Keys
+```bash
+# Generate admin key
+node scripts/generate-admin-key.js
+
+# Use in requests
+curl -H "X-API-Key: hk_your_key_here" http://localhost:3000/api/admin/keys
+
+# Set permissions
+{
+  "name": "CI/CD Pipeline",
+  "permissions": ["read", "write"]
+}
+```
 
 ## 🔧 Configuration
 
@@ -315,6 +395,14 @@ pm2 start npm --name "helparr" -- start
 - **Measure before optimizing** - Performance bottlenecks are usually data-related
 - **Fail fast, log clearly** - Debugging should be straightforward
 - **Security first** - Validate all inputs, use HMAC for authentication
+- **Test-driven development** - Write tests first, then implementation
+
+### Testing
+The project includes comprehensive test coverage:
+- **Unit Tests**: Validation, middleware, error handling, API authentication
+- **Integration Tests**: API middleware stack, Redis fallback, health checks
+- **API Tests**: Rate limiting, CORS, caching, logging
+- **Total Coverage**: 185+ tests across all backend systems
 
 ## 📄 License
 
