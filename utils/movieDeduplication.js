@@ -11,7 +11,7 @@
  * @param {Object} newMovie - New movie data to merge
  * @returns {Object} - Merged movie with most complete data
  */
-export function mergeMovieData(existingMovie, newMovie) {
+function mergeMovieData(existingMovie, newMovie) {
   // Helper to choose better value (more complete/accurate)
   const chooseBetter = (existing, newVal, preferLonger = true) => {
     if (!existing && newVal) return newVal;
@@ -64,7 +64,7 @@ export function mergeMovieData(existingMovie, newMovie) {
  * @param {Object} newSource - New source to add
  * @returns {Array} - Updated sources array
  */
-export function addMovieSource(existingSources = [], newSource) {
+function addMovieSource(existingSources = [], newSource) {
   // Check if this exact source already exists
   const existingSourceIndex = existingSources.findIndex(source => 
     source.personId === newSource.personId && 
@@ -90,7 +90,7 @@ export function addMovieSource(existingSources = [], newSource) {
  * @param {Array} people - Array of people with their movie lists
  * @returns {Array} - Deduplicated movies with source tracking
  */
-export function deduplicateMovies(people) {
+function deduplicateMovies(people) {
   const movieMap = new Map(); // Key: imdb_id, Value: deduplicated movie
   const deduplicationStats = {
     totalMovieSelections: 0,
@@ -162,7 +162,7 @@ export function deduplicateMovies(people) {
  * @param {Object} currentSource - Current person/role context
  * @returns {Array} - Other sources for this movie
  */
-export function findOtherSources(movie, people, currentSource) {
+function findOtherSources(movie, people, currentSource) {
   if (!movie.imdb_id) return [];
   
   const otherSources = [];
@@ -193,7 +193,7 @@ export function findOtherSources(movie, people, currentSource) {
  * @param {Array} otherSources - Other sources for this movie
  * @returns {string} - UI text like "Also from Tom Hardy" or "Also from 3 more actors"
  */
-export function generateDuplicateIndicator(otherSources) {
+function generateDuplicateIndicator(otherSources) {
   if (!otherSources || otherSources.length === 0) {
     return '';
   }
@@ -226,7 +226,7 @@ export function generateDuplicateIndicator(otherSources) {
  * @param {Array} sources - All sources for a movie
  * @returns {string} - RSS description text
  */
-export function generateRSSSourceAttribution(sources) {
+function generateRSSSourceAttribution(sources) {
   if (!sources || sources.length === 0) {
     return 'Added to collection';
   }
@@ -263,6 +263,17 @@ export function generateRSSSourceAttribution(sources) {
  * @param {Array} people - Current people array
  * @returns {Array} - Deduplicated selected movies ready for RSS
  */
-export function updateSelectedMoviesWithDeduplication(people) {
+function updateSelectedMoviesWithDeduplication(people) {
   return deduplicateMovies(people);
 }
+
+// CommonJS exports
+module.exports = {
+  mergeMovieData,
+  addMovieSource,
+  deduplicateMovies,
+  findOtherSources,
+  generateDuplicateIndicator,
+  generateRSSSourceAttribution,
+  updateSelectedMoviesWithDeduplication
+};
