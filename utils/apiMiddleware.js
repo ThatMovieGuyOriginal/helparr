@@ -3,6 +3,7 @@
 
 const { createValidationMiddleware } = require('./validation.js');
 const { createRequestLoggingMiddleware } = require('./requestLogging.js');
+const { normalizeError, isHttpError } = require('./httpErrors.js');
 
 /**
  * Rate limiting functionality
@@ -213,34 +214,25 @@ function withErrorHandling(handler) {
     } catch (error) {
       console.error('API Error:', error);
       
-      // Determine appropriate error response
-      let status = 500;
-      let message = 'Internal server error';
+      // Normalize error to HTTP error format
+      const httpError = normalizeError(error);
       
-      if (error.name === 'ValidationError') {
-        status = 400;
-        message = error.message;
-      } else if (error.name === 'UnauthorizedError') {
-        status = 401;
-        message = 'Unauthorized';
-      } else if (error.name === 'ForbiddenError') {
-        status = 403;
-        message = 'Forbidden';
-      } else if (error.name === 'NotFoundError') {
-        status = 404;
-        message = 'Not found';
-      } else if (error.message.includes('Invalid TMDb')) {
-        status = 502;
-        message = error.message;
-      }
+      // Build response body
+      const responseBody = {
+        error: httpError.message,
+        code: httpError.code,
+        ...(httpError.details && { details: httpError.details }),
+        ...(process.env.NODE_ENV === 'development' && httpError.stack && { stack: httpError.stack })
+      };
 
-      return Response.json(
-        { 
-          error: message,
-          ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
-        }, 
-        { status }
-      );
+      return Response.json(responseBody, { 
+        status: httpError.statusCode,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Error-Code': httpError.code || 'UNKNOWN_ERROR',
+          'X-Error-Type': httpError.name
+        }
+      });
     }
   };
 }
