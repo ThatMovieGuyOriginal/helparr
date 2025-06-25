@@ -43,6 +43,7 @@ Thumbs.db
 .vscode/tasks.json
 .idea/
 *.sublime-*
+push-to-github.sh
 
 # Log files
 *.log
@@ -86,6 +87,7 @@ jspm_packages/
 
 # dotenv environment variables file
 .env
+.env.git
 .env.local
 .env.development.local
 .env.test.local
