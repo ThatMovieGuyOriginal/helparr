@@ -1,13 +1,13 @@
 // __tests__/rss.test.js
 
-import { rssManager } from '../lib/RSSManager';
-import { loadTenant } from '../lib/kv';
-
-// Mock the KV module
+// Mock the KV module before importing anything
 jest.mock('../lib/kv', () => ({
   loadTenant: jest.fn(),
   saveTenant: jest.fn()
 }));
+
+const { rssManager } = require('../lib/RSSManager');
+const { loadTenant } = require('../lib/kv');
 
 describe('RSS Feed Generation', () => {
   beforeEach(() => {

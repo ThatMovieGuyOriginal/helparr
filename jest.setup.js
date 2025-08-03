@@ -36,6 +36,10 @@ global.sessionStorage = sessionStorageMock;
 // Mock fetch for API tests
 global.fetch = jest.fn();
 
+// Mock Node.js setImmediate for tests (since we use jsdom environment)
+global.setImmediate = global.setImmediate || ((fn, ...args) => setTimeout(fn, 0, ...args));
+global.clearImmediate = global.clearImmediate || clearTimeout;
+
 // Clean up mocks between tests
 beforeEach(() => {
   jest.clearAllMocks();

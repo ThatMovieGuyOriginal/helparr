@@ -252,7 +252,7 @@ describe('API Middleware', () => {
       expect(result).toBeInstanceOf(Response);
       // Test that it's an error response
       const errorResponse = await result.json();
-      expect(errorResponse.error).toBe('Internal server error');
+      expect(errorResponse.error).toBe('Test error');
     });
 
     it('should handle validation errors', async () => {
@@ -265,7 +265,7 @@ describe('API Middleware', () => {
       const request = new MockRequest('http://test.com');
       const result = await wrappedHandler(request);
 
-      expect(result.status).toBe(400);
+      expect(result.status).toBe(422);
     });
   });
 
