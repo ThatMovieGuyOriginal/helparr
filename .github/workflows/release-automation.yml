@@ -390,7 +390,7 @@ jobs:
           path: ./release-assets/
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.version-bump.outputs.new-version }}
           name: Release ${{ needs.version-bump.outputs.new-version }}
