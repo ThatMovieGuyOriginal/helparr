@@ -7,13 +7,7 @@ module.exports = {
     jest: true,
   },
   extends: [
-    'eslint:recommended',
-    '@next/eslint-config-next',
-    'plugin:react/recommended',
-    'plugin:react-hooks/recommended',
-    'plugin:jsx-a11y/recommended',
-    'plugin:import/recommended',
-    'plugin:import/typescript',
+    'next/core-web-vitals'
   ],
   parser: '@babel/eslint-parser',
   parserOptions: {
@@ -28,12 +22,7 @@ module.exports = {
     },
   },
   plugins: [
-    'react',
-    'react-hooks',
-    'jsx-a11y',
-    'import',
     'security',
-    'node',
   ],
   settings: {
     react: {
