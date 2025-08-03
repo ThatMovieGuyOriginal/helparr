@@ -51,20 +51,6 @@ export default function DemoView({ onGetStarted }) {
 
   const currentSearchType = searchTypes.find(type => type.key === searchType) || searchTypes[0];
 
-  // Auto-search with debouncing
-  useEffect(() => {
-    if (searchQuery.length < 2) {
-      setSearchResults([]);
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      handleDemoSearch();
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery, searchType]);
-
   const handleDemoSearch = async () => {
     setSearchLoading(true);
     setError('');
@@ -115,6 +101,20 @@ export default function DemoView({ onGetStarted }) {
       setSearchLoading(false);
     }
   };
+
+  // Auto-search with debouncing
+  useEffect(() => {
+    if (searchQuery.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      handleDemoSearch();
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, searchType]);
 
   const handleSourceClick = async (source, type, role = null) => {
     setSelectedSource(source);

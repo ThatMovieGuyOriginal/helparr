@@ -10,17 +10,6 @@ export function AdminView() {
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const [apiKeyError, setApiKeyError] = useState('');
 
-  useEffect(() => {
-    // Try to load API key from sessionStorage
-    const savedApiKey = sessionStorage.getItem('helparr_admin_api_key');
-    if (savedApiKey) {
-      setApiKey(savedApiKey);
-      fetchAnalytics(savedApiKey);
-    } else {
-      fetchAnalytics();
-    }
-  }, []);
-
   const fetchAnalytics = async (providedApiKey = null) => {
     setLoading(true);
     setApiKeyError('');
@@ -61,6 +50,17 @@ export function AdminView() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    // Try to load API key from sessionStorage
+    const savedApiKey = sessionStorage.getItem('helparr_admin_api_key');
+    if (savedApiKey) {
+      setApiKey(savedApiKey);
+      fetchAnalytics(savedApiKey);
+    } else {
+      fetchAnalytics();
+    }
+  }, []);
   
   const handleApiKeySubmit = (e) => {
     e.preventDefault();

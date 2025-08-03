@@ -9,6 +9,20 @@ module.exports = {
   extends: [
     'next/core-web-vitals'
   ],
+  rules: {
+    // Allow console statements in development, warn in production
+    'no-console': process.env.NODE_ENV === 'production' ? 'error' : 'warn',
+    // Allow const reassignment for specific patterns
+    'prefer-const': ['error', { destructuring: 'all' }],
+    // More lenient unused vars (allow underscore prefix)
+    'no-unused-vars': [
+      'warn',
+      {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_'
+      }
+    ]
+  },
   parser: '@babel/eslint-parser',
   parserOptions: {
     ecmaVersion: 2022,
