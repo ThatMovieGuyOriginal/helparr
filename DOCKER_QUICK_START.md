@@ -1,5 +1,7 @@
 # Docker Quick Start Guide
 
+📦 **Docker Hub Repository:** [jhick452/helparr](https://hub.docker.com/r/jhick452/helparr)
+
 ## Simple Setup (Memory Mode)
 ```bash
 # Download the memory-only configuration

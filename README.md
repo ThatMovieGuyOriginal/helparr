@@ -243,10 +243,12 @@ vercel
 
 ### Docker (Recommended for Self-Hosting)
 
+📦 **Docker Hub:** [jhick452/helparr](https://hub.docker.com/r/jhick452/helparr)
+
 #### Quick Start - Memory Mode
 ```bash
 # Simplest setup - no Redis required
-docker run -p 3000:3000 helparr/helparr:latest
+docker run -p 3000:3000 jhick452/helparr:latest
 ```
 
 #### Production Setup - Redis Mode

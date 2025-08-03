@@ -139,7 +139,7 @@ docker run -d \
     -p $TEST_PORT:3000 \
     -e NODE_ENV=production \
     -e HELPARR_INSTANCE_NAME="Test Memory Mode" \
-    helparr/helparr:latest
+    jhick452/helparr:latest
 
 wait_for_service $MEMORY_CONTAINER
 test_health $MEMORY_CONTAINER "memory"
@@ -169,7 +169,7 @@ docker run -d \
     -e NODE_ENV=production \
     -e REDIS_URL=redis://$REDIS_DB_CONTAINER:6379 \
     -e HELPARR_INSTANCE_NAME="Test Redis Mode" \
-    helparr/helparr:latest
+    jhick452/helparr:latest
 
 wait_for_service $REDIS_CONTAINER
 test_health $REDIS_CONTAINER "redis"
@@ -199,7 +199,7 @@ cat > docker-compose.test.yml << EOF
 version: '3.8'
 services:
   helparr-compose-test:
-    image: helparr/helparr:latest
+    image: jhick452/helparr:latest
     container_name: helparr-compose-test
     ports:
       - "$((TEST_PORT + 2)):3000"
@@ -246,6 +246,6 @@ echo -e "${GREEN}🎉 All Docker tests passed!${NC}"
 echo ""
 echo "Next steps:"
 echo "1. Deploy with: docker-compose up -d"
-echo "2. Or memory mode: docker run -p 3000:3000 helparr/helparr:latest"
+echo "2. Or memory mode: docker run -p 3000:3000 jhick452/helparr:latest"
 echo "3. Access at: http://localhost:3000"
 echo "4. Monitor health: curl http://localhost:3000/api/health"

@@ -11,7 +11,7 @@ Perfect for testing or small personal instances:
 # Download and run with in-memory storage
 docker run -p 3000:3000 \
   -e HELPARR_INSTANCE_NAME="My Helparr" \
-  helparr/helparr:latest
+  jhick452/helparr:latest
 
 # Or using compose
 docker-compose -f docker-compose.memory.yml up -d
@@ -88,7 +88,7 @@ ACME_EMAIL=me@example.com
 
 ```bash
 # Memory mode - no Redis needed
-docker run -p 3000:3000 helparr/helparr:latest
+docker run -p 3000:3000 jhick452/helparr:latest
 ```
 
 ### Redis Storage  
@@ -110,7 +110,7 @@ docker-compose -f docker-compose.redis.yml up -d
 version: '3.8'
 services:
   helparr:
-    image: helparr/helparr:latest
+    image: jhick452/helparr:latest
     ports:
       - "3000:3000"
     environment:
@@ -134,7 +134,7 @@ services:
 version: '3.8'
 services:
   helparr:
-    image: helparr/helparr:latest
+    image: jhick452/helparr:latest
     environment:
       - HELPARR_INSTANCE_NAME=Public Helparr Instance
       - REDIS_URL=redis://redis:6379
@@ -203,7 +203,7 @@ curl http://localhost:3000/api/health | jq '.services.storage'
 docker logs helparr_redis
 
 # Force memory mode (remove Redis URL)
-docker run -p 3000:3000 -e REDIS_URL= helparr/helparr:latest
+docker run -p 3000:3000 -e REDIS_URL= jhick452/helparr:latest
 ```
 
 ### Performance Issues
@@ -317,7 +317,7 @@ echo "Backup completed: $BACKUP_DIR"
 ### Update Process
 ```bash
 # Pull latest image
-docker pull helparr/helparr:latest
+docker pull jhick452/helparr:latest
 
 # Stop services
 docker-compose down
@@ -337,13 +337,13 @@ curl http://localhost:3000/api/health
 version: '3.8'
 services:
   helparr-1:
-    image: helparr/helparr:latest
+    image: jhick452/helparr:latest
     environment:
       - REDIS_URL=redis://redis:6379
       - HELPARR_INSTANCE_NAME=Helparr Instance 1
     
   helparr-2:
-    image: helparr/helparr:latest
+    image: jhick452/helparr:latest
     environment:
       - REDIS_URL=redis://redis:6379
       - HELPARR_INSTANCE_NAME=Helparr Instance 2
@@ -361,7 +361,7 @@ services:
 ```yaml
 services:
   helparr:
-    image: helparr/helparr:latest
+    image: jhick452/helparr:latest
     environment:
       # Use external Redis (AWS ElastiCache, etc.)
       - REDIS_URL=redis://your-redis-cluster.cache.amazonaws.com:6379
