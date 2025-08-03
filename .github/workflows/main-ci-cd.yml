@@ -1,0 +1,350 @@
+name: 🚀 Main CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '18.20.4'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: read
+  security-events: write
+  packages: write
+  actions: read
+  id-token: write
+
+jobs:
+  # ============================================================================
+  # CODE QUALITY & SECURITY
+  # ============================================================================
+  quality-gate:
+    name: 🔍 Quality & Security Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      should-deploy: ${{ steps.gate-check.outputs.should-deploy }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Run ESLint
+        run: npm run lint
+        continue-on-error: false
+
+      - name: Check Prettier formatting
+        run: |
+          if [ -f ".prettierrc" ] || [ -f "prettier.config.js" ] || [ -f ".prettierrc.json" ]; then
+            npx prettier --check . || {
+              echo "::error::Code formatting issues found. Run 'npx prettier --write .' to fix."
+              exit 1
+            }
+          else
+            echo "✅ Prettier not configured, skipping format check"
+          fi
+
+      - name: Run security audit
+        run: |
+          npm audit --audit-level=moderate || {
+            echo "::warning::Security vulnerabilities found"
+            npm audit || true
+          }
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+          queries: security-and-quality
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+      - name: Quality gate decision
+        id: gate-check
+        run: |
+          echo "✅ Quality gate passed"
+          echo "should-deploy=true" >> $GITHUB_OUTPUT
+
+  # ============================================================================
+  # COMPREHENSIVE TESTING
+  # ============================================================================
+  test-suite:
+    name: 🧪 Test Suite
+    runs-on: ubuntu-latest
+    needs: quality-gate
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        node-version: ['18.20.4', '20.x']
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 3
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Create test environment
+        run: |
+          cat > .env.test << EOF
+          REDIS_URL=redis://localhost:6379
+          TMDB_API_KEY=test_key_for_ci
+          NEXT_PUBLIC_BASE_URL=http://localhost:3000
+          NODE_ENV=test
+          EOF
+
+      - name: Run test suite with coverage
+        run: npm test -- --coverage --watchAll=false --maxWorkers=2
+        env:
+          CI: true
+
+      - name: Upload coverage to Codecov
+        if: matrix.node-version == '18.20.4'
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # ============================================================================
+  # BUILD & INTEGRATION TESTING
+  # ============================================================================
+  build-and-integration:
+    name: 🏗️ Build & Integration Tests
+    runs-on: ubuntu-latest
+    needs: [quality-gate, test-suite]
+    timeout-minutes: 20
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Build application
+        run: |
+          cat > .env.local << EOF
+          NEXT_PUBLIC_BASE_URL=http://localhost:3000
+          NODE_ENV=production
+          EOF
+          npm run build
+
+      - name: Start application for testing
+        run: |
+          cat > .env.local << EOF
+          REDIS_URL=redis://localhost:6379
+          NEXT_PUBLIC_BASE_URL=http://localhost:3000
+          NODE_ENV=production
+          EOF
+          npm start &
+          
+          # Wait for app to be ready
+          timeout 60 bash -c 'until curl -f http://localhost:3000/api/health >/dev/null 2>&1; do sleep 2; done'
+
+      - name: Run integration tests
+        run: |
+          echo "🧪 Testing health endpoint..."
+          curl -f http://localhost:3000/api/health | jq . || exit 1
+          
+          echo "🧪 Testing demo search endpoint..."
+          curl -f "http://localhost:3000/api/demo/search?query=Tom+Hanks" | jq . || exit 1
+          
+          echo "✅ Integration tests passed!"
+
+      - name: Install Lighthouse CI
+        run: npm install -g @lhci/cli@0.12.x
+
+      - name: Run Lighthouse performance audit
+        run: |
+          lhci autorun \
+            --collect.url=http://localhost:3000 \
+            --collect.url=http://localhost:3000/api/health \
+            --assert.assertions.performance=0.7 \
+            --assert.assertions.accessibility=0.9 \
+            --assert.assertions.best-practices=0.8 \
+            --upload.target=temporary-public-storage
+        continue-on-error: true
+
+  # ============================================================================
+  # CONTAINER BUILD & SECURITY
+  # ============================================================================
+  container-build:
+    name: 🐳 Container Build & Security
+    runs-on: ubuntu-latest
+    needs: build-and-integration
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'docker')
+    timeout-minutes: 20
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push' && secrets.DOCKER_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}
+            ${{ secrets.DOCKER_USERNAME && format('{0}/helparr', secrets.DOCKER_USERNAME) || '' }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NODE_ENV=production
+            BUILD_VERSION=${{ github.sha }}
+
+      - name: Run Trivy security scan
+        if: github.event_name == 'push'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/${{ github.repository }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results
+        if: github.event_name == 'push'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # ============================================================================
+  # DEPLOYMENT
+  # ============================================================================
+  deploy:
+    name: 🚀 Deploy
+    runs-on: ubuntu-latest
+    needs: [quality-gate, test-suite, build-and-integration, container-build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.quality-gate.outputs.should-deploy == 'true'
+    environment: production
+    timeout-minutes: 10
+    steps:
+      - name: Deploy to production
+        run: |
+          echo "🚀 Production deployment would happen here"
+          echo "Container digest: ${{ needs.container-build.outputs.image-digest }}"
+          echo "All quality gates passed - ready for production!"
+
+  # ============================================================================
+  # NOTIFICATION & REPORTING
+  # ============================================================================
+  notify:
+    name: 📊 Results & Notifications
+    runs-on: ubuntu-latest
+    if: always() && (github.event_name == 'push' || github.event_name == 'schedule')
+    needs: [quality-gate, test-suite, build-and-integration, container-build, deploy]
+    steps:
+      - name: Generate pipeline summary
+        run: |
+          cat > pipeline-summary.md << EOF
+          # 🚀 CI/CD Pipeline Results
+          
+          **Repository**: ${{ github.repository }}
+          **Branch**: ${{ github.ref_name }}
+          **Commit**: ${{ github.sha }}
+          **Triggered by**: ${{ github.event_name }}
+          
+          ## 📊 Job Results
+          
+          | Job | Status | Duration |
+          |-----|--------|----------|
+          | Quality Gate | ${{ needs.quality-gate.result }} | - |
+          | Test Suite | ${{ needs.test-suite.result }} | - |
+          | Build & Integration | ${{ needs.build-and-integration.result }} | - |
+          | Container Build | ${{ needs.container-build.result }} | - |
+          | Deploy | ${{ needs.deploy.result }} | - |
+          
+          ## 🔗 Links
+          
+          - [🌐 Production App](https://helparr.vercel.app)
+          - [🏥 Health Check](https://helparr.vercel.app/api/health)
+          - [📦 Container Images](https://github.com/${{ github.repository }}/pkgs/container/helparr)
+          - [🔍 Security Scans](https://github.com/${{ github.repository }}/security)
+          
+          ---
+          **Pipeline Run**: [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          EOF
+          
+          cat pipeline-summary.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Check for failures
+        if: contains(needs.*.result, 'failure')
+        run: |
+          echo "::error::One or more pipeline jobs failed"
+          exit 1
