@@ -5,7 +5,7 @@ version: '3.8'
 
 services:
   helparr:
-    image: helparr/helparr:latest
+    image: jhick452/helparr:latest
     container_name: helparr
     restart: unless-stopped
     ports:
@@ -122,7 +122,7 @@ version: '3.8'
 
 services:
   helparr:
-    image: helparr/helparr:latest
+    image: jhick452/helparr:latest
     container_name: helparr_memory
     restart: unless-stopped
     ports:
@@ -156,7 +156,7 @@ version: '3.8'
 
 services:
   helparr:
-    image: helparr/helparr:latest
+    image: jhick452/helparr:latest
     container_name: helparr_redis
     restart: unless-stopped
     ports:
