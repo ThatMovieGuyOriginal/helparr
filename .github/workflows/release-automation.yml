@@ -106,7 +106,7 @@ jobs:
 
       - name: Run quick tests
         run: |
-          npm test -- --testPathPattern="__tests__/api/health.test.js" --watchAll=false
+          npm test -- __tests__/api/health.test.js --watchAll=false
           echo "✅ Quick validation tests passed"
 
   # ============================================================================
