@@ -6,19 +6,52 @@ export function AdminView() {
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
+  const [apiKeyError, setApiKeyError] = useState('');
 
   useEffect(() => {
-    fetchAnalytics();
+    // Try to load API key from sessionStorage
+    const savedApiKey = sessionStorage.getItem('helparr_admin_api_key');
+    if (savedApiKey) {
+      setApiKey(savedApiKey);
+      fetchAnalytics(savedApiKey);
+    } else {
+      fetchAnalytics();
+    }
   }, []);
 
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = async (providedApiKey = null) => {
     setLoading(true);
+    setApiKeyError('');
+    
     try {
-      const res = await fetch('/api/admin/analytics');
+      const headers = {};
+      const keyToUse = providedApiKey || apiKey;
+      
+      if (keyToUse) {
+        headers['X-API-Key'] = keyToUse;
+      }
+      
+      const res = await fetch('/api/admin/analytics', { headers });
       const data = await res.json();
       
       if (res.ok) {
         setAnalytics(data);
+        setError('');
+        setShowApiKeyInput(false);
+        // Save successful API key to session storage
+        if (keyToUse) {
+          sessionStorage.setItem('helparr_admin_api_key', keyToUse);
+          setApiKey(keyToUse);
+        }
+      } else if (res.status === 401) {
+        setError('');
+        setApiKeyError(data.error || 'API key required');
+        setShowApiKeyInput(true);
+        // Clear invalid API key from storage
+        sessionStorage.removeItem('helparr_admin_api_key');
+        setApiKey('');
       } else {
         setError(data.error || 'Failed to fetch analytics');
       }
@@ -27,6 +60,22 @@ export function AdminView() {
     } finally {
       setLoading(false);
     }
+  };
+  
+  const handleApiKeySubmit = (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const submittedKey = formData.get('apiKey');
+    if (submittedKey) {
+      fetchAnalytics(submittedKey);
+    }
+  };
+  
+  const clearApiKey = () => {
+    sessionStorage.removeItem('helparr_admin_api_key');
+    setApiKey('');
+    setShowApiKeyInput(true);
+    setAnalytics(null);
   };
 
   if (loading) {
@@ -38,13 +87,67 @@ export function AdminView() {
     );
   }
 
+  if (showApiKeyInput || apiKeyError) {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <div className="bg-slate-800/50 rounded-xl p-8 border border-slate-700">
+          <div className="text-center mb-6">
+            <h2 className="text-2xl font-bold text-white mb-2">🔐 Admin Access Required</h2>
+            <p className="text-slate-400">
+              Enter your admin API key to access the analytics dashboard
+            </p>
+          </div>
+          
+          {apiKeyError && (
+            <div className="bg-red-500/20 border border-red-500 rounded-lg p-4 mb-6">
+              <p className="text-red-200 text-center">{apiKeyError}</p>
+            </div>
+          )}
+          
+          <form onSubmit={handleApiKeySubmit} className="space-y-4">
+            <div>
+              <label htmlFor="apiKey" className="block text-sm font-medium text-slate-300 mb-2">
+                API Key
+              </label>
+              <input
+                type="password"
+                id="apiKey"
+                name="apiKey"
+                required
+                placeholder="hk_..."
+                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              />
+            </div>
+            
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+            >
+              {loading ? 'Authenticating...' : 'Access Dashboard'}
+            </button>
+          </form>
+          
+          <div className="mt-8 p-4 bg-blue-600/20 border border-blue-500 rounded-lg">
+            <h3 className="text-blue-200 font-medium mb-2">💡 How to get an API key:</h3>
+            <div className="text-blue-100 text-sm space-y-1">
+              <div><strong>Local deployment:</strong> Run <code className="bg-blue-900/30 px-1 rounded">node scripts/generate-admin-key.js</code></div>
+              <div><strong>Docker:</strong> Set <code className="bg-blue-900/30 px-1 rounded">ADMIN_API_KEY</code> environment variable</div>
+              <div><strong>Hosted instance:</strong> Contact the administrator</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
   if (error) {
     return (
       <div className="max-w-6xl mx-auto">
         <div className="bg-red-500/20 border border-red-500 rounded-lg p-6 text-center">
           <p className="text-red-200">{error}</p>
           <button 
-            onClick={fetchAnalytics}
+            onClick={() => fetchAnalytics()}
             className="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg"
           >
             Retry
@@ -66,11 +169,24 @@ export function AdminView() {
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="mb-8">
-        <h2 className="text-3xl font-bold text-white mb-2">📊 Business Dashboard</h2>
-        <p className="text-slate-400">
-          Conversion funnel analysis for {dateRange.days} days 
-          ({dateRange.start} to {dateRange.end})
-        </p>
+        <div className="flex justify-between items-start">
+          <div>
+            <h2 className="text-3xl font-bold text-white mb-2">📊 Business Dashboard</h2>
+            <p className="text-slate-400">
+              Conversion funnel analysis for {dateRange.days} days 
+              ({dateRange.start} to {dateRange.end})
+            </p>
+          </div>
+          {apiKey && (
+            <button
+              onClick={clearApiKey}
+              className="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition-colors"
+              title="Clear API key and re-authenticate"
+            >
+              🔓 Clear Key
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Conversion Funnel - Primary Business Metric */}
