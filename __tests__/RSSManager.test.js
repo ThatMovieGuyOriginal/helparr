@@ -2,14 +2,12 @@
  * @jest-environment node
  */
 // Test RSS Manager functionality
-const { RSSManager, rssManager } = require('../lib/RSSManager.js');
-const { loadTenant, saveTenant } = require('../lib/kv.js');
 
-// Mock the kv module
-jest.mock('../lib/kv.js', () => ({
-  loadTenant: jest.fn(),
-  saveTenant: jest.fn()
-}));
+// Mock the kv module first
+jest.mock('../lib/kv.js');
+
+const { RSSManager, rssManager } = require('../lib/RSSManager.js');
+const { loadTenant: mockLoadTenant, saveTenant: mockSaveTenant } = require('../lib/kv.js');
 
 describe('RSSManager', () => {
   let rssManagerInstance;
@@ -278,16 +276,16 @@ describe('RSSManager', () => {
         ])
       };
 
-      loadTenant.mockResolvedValue(tenant);
-      saveTenant.mockResolvedValue();
+      mockLoadTenant.mockResolvedValue(tenant);
+      mockSaveTenant.mockResolvedValue();
 
       // First call
       const feed1 = await rssManagerInstance.generateFeed(userId);
-      expect(loadTenant).toHaveBeenCalledTimes(1);
+      expect(mockLoadTenant).toHaveBeenCalledTimes(1);
 
       // Second call should use cache
       const feed2 = await rssManagerInstance.generateFeed(userId);
-      expect(loadTenant).toHaveBeenCalledTimes(1); // Still only called once
+      expect(mockLoadTenant).toHaveBeenCalledTimes(1); // Still only called once
       expect(feed1).toBe(feed2);
     });
 
@@ -299,16 +297,16 @@ describe('RSSManager', () => {
         ])
       };
 
-      loadTenant.mockResolvedValue(tenant);
-      saveTenant.mockResolvedValue();
+      mockLoadTenant.mockResolvedValue(tenant);
+      mockSaveTenant.mockResolvedValue();
 
       // First call
       await rssManagerInstance.generateFeed(userId);
-      expect(loadTenant).toHaveBeenCalledTimes(1);
+      expect(mockLoadTenant).toHaveBeenCalledTimes(1);
 
       // Second call with bypassCache
       await rssManagerInstance.generateFeed(userId, { bypassCache: true });
-      expect(loadTenant).toHaveBeenCalledTimes(2);
+      expect(mockLoadTenant).toHaveBeenCalledTimes(2);
     });
 
     it('should clear cache', () => {
@@ -337,7 +335,7 @@ describe('RSSManager', () => {
 
   describe('error handling and backup', () => {
     it('should handle tenant not found gracefully', async () => {
-      loadTenant.mockResolvedValue(null);
+      mockLoadTenant.mockResolvedValue(null);
 
       const result = await rssManagerInstance.generateFeed('nonexistent-user');
       
@@ -350,8 +348,8 @@ describe('RSSManager', () => {
       const userId = 'test-user';
       const backupFeed = '<rss>backup feed</rss>';
       
-      // Mock loadTenant to fail on first call, succeed on backup call
-      loadTenant
+      // Mock mockLoadTenant to fail on first call, succeed on backup call
+      mockLoadTenant
         .mockRejectedValueOnce(new Error('Database error'))
         .mockResolvedValueOnce({ lastGeneratedFeed: backupFeed });
 
@@ -364,7 +362,7 @@ describe('RSSManager', () => {
       const userId = 'test-user';
       
       // Mock all calls to fail
-      loadTenant.mockRejectedValue(new Error('Total failure'));
+      mockLoadTenant.mockRejectedValue(new Error('Total failure'));
 
       const result = await rssManagerInstance.generateFeed(userId);
       
@@ -380,12 +378,12 @@ describe('RSSManager', () => {
         ])
       };
 
-      loadTenant.mockResolvedValue(tenant);
-      saveTenant.mockResolvedValue();
+      mockLoadTenant.mockResolvedValue(tenant);
+      mockSaveTenant.mockResolvedValue();
 
       await rssManagerInstance.generateFeed(userId);
 
-      expect(saveTenant).toHaveBeenCalledWith(userId, expect.objectContaining({
+      expect(mockSaveTenant).toHaveBeenCalledWith(userId, expect.objectContaining({
         lastGeneratedFeed: expect.stringContaining('Test Movie'),
         lastFeedGeneration: expect.any(String),
         feedSize: expect.any(Number)
@@ -400,8 +398,8 @@ describe('RSSManager', () => {
         ])
       };
 
-      loadTenant.mockResolvedValue(tenant);
-      saveTenant.mockRejectedValue(new Error('Storage failed'));
+      mockLoadTenant.mockResolvedValue(tenant);
+      mockSaveTenant.mockRejectedValue(new Error('Storage failed'));
 
       // Should not throw despite backup storage failure
       const result = await rssManagerInstance.generateFeed(userId);
