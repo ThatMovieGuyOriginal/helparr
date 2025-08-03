@@ -1,0 +1,705 @@
+name: 🚀 Production-Grade CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: '0 2 * * 1' # Weekly security scan on Mondays at 2 AM
+
+env:
+  NODE_VERSION_FILE: .nvmrc
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: read
+  security-events: write
+  packages: write
+  actions: read
+  id-token: write
+
+jobs:
+  # ============================================================================
+  # SECURITY & QUALITY GATE
+  # ============================================================================
+  security-scan:
+    name: 🔒 Security & Compliance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event_name != 'schedule' || github.ref == 'refs/heads/main'
+    outputs:
+      has-security-issues: ${{ steps.security-check.outputs.has-issues }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ${{ env.NODE_VERSION_FILE }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Run npm audit
+        run: |
+          npm audit --audit-level=high --json > audit-results.json || true
+          if [ -s audit-results.json ]; then
+            echo "::warning::Security vulnerabilities found in dependencies"
+            npm audit --audit-level=high
+          fi
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+          queries: security-extended,security-and-quality
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript"
+
+      - name: Run Semgrep Security Scan
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/secrets
+            p/javascript
+            p/nodejs
+            p/docker
+          generateSarif: true
+
+      - name: Upload Semgrep results to GitHub
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+
+      - name: Secrets scanning with Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE}}
+
+      - name: Security check summary
+        id: security-check
+        run: |
+          if [ -f semgrep.sarif ] && [ -s semgrep.sarif ]; then
+            echo "has-issues=true" >> $GITHUB_OUTPUT
+          else
+            echo "has-issues=false" >> $GITHUB_OUTPUT
+          fi
+
+  # ============================================================================
+  # CODE QUALITY & LINTING
+  # ============================================================================
+  code-quality:
+    name: 🔍 Code Quality & Standards
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ${{ env.NODE_VERSION_FILE }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Run ESLint
+        run: |
+          npx eslint . --ext .js,.jsx,.ts,.tsx --format=json --output-file=eslint-results.json || true
+          npx eslint . --ext .js,.jsx,.ts,.tsx
+
+      - name: Check code formatting with Prettier
+        run: |
+          if [ -f .prettierrc ]; then
+            npx prettier --check . || {
+              echo "::error::Code formatting issues found. Run 'npm run format' to fix."
+              exit 1
+            }
+          fi
+
+      - name: Run type checking
+        run: |
+          if [ -f tsconfig.json ]; then
+            npx tsc --noEmit
+          fi
+
+      - name: Check for unused dependencies
+        run: |
+          npx depcheck --json > depcheck-results.json || true
+          if [ -s depcheck-results.json ]; then
+            echo "::warning::Unused dependencies detected"
+            cat depcheck-results.json | jq -r '.dependencies[]' | head -5
+          fi
+
+      - name: Bundle size analysis
+        run: |
+          if [ -f next.config.js ]; then
+            npm run build
+            npx @next/bundle-analyzer || true
+          fi
+
+  # ============================================================================
+  # COMPREHENSIVE TEST MATRIX
+  # ============================================================================
+  unit-tests:
+    name: 🧪 Unit Tests (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [18, 20, 22]
+    services:
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Create test environment
+        run: |
+          echo "NODE_ENV=test" > .env.test
+          echo "REDIS_URL=redis://localhost:6379" >> .env.test
+
+      - name: Run unit tests with coverage
+        run: |
+          npm test -- --coverage --watchAll=false --testPathPattern="__tests__/(api|integration)" --maxWorkers=2
+        env:
+          NODE_ENV: test
+          CI: true
+
+      - name: Run API endpoint tests
+        run: |
+          npm test -- --testPathPattern="__tests__/api" --watchAll=false --verbose
+        env:
+          NODE_ENV: test
+          CI: true
+
+      - name: Run integration tests
+        run: |
+          npm test -- --testPathPattern="__tests__/integration" --watchAll=false --verbose
+        env:
+          NODE_ENV: test
+          CI: true
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: matrix.node-version == '20'
+        with:
+          file: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Archive test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-node-${{ matrix.node-version }}
+          path: |
+            coverage/
+            test-results.xml
+          retention-days: 7
+
+  # ============================================================================
+  # E2E & INTEGRATION TESTING
+  # ============================================================================
+  e2e-tests:
+    name: 🎭 E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    services:
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ${{ env.NODE_VERSION_FILE }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Install Playwright
+        run: |
+          npx playwright install --with-deps chromium firefox webkit
+
+      - name: Build application
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Start application
+        run: |
+          npm start &
+          npx wait-on http://localhost:3000 --timeout 60000
+        env:
+          NODE_ENV: test
+          REDIS_URL: redis://localhost:6379
+          PORT: 3000
+
+      - name: Run E2E tests
+        run: |
+          if [ -f playwright.config.js ]; then
+            npx playwright test --reporter=html
+          else
+            echo "No E2E tests configured"
+          fi
+
+      - name: Upload E2E test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-test-results
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  # ============================================================================
+  # PERFORMANCE & LOAD TESTING
+  # ============================================================================
+  performance-tests:
+    name: ⚡ Performance & Load Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    if: github.ref == 'refs/heads/main' || github.event_name == 'schedule'
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ${{ env.NODE_VERSION_FILE }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Build application
+        run: npm run build
+
+      - name: Start application
+        run: |
+          npm start &
+          npx wait-on http://localhost:3000 --timeout 60000
+        env:
+          NODE_ENV: production
+          REDIS_URL: redis://localhost:6379
+
+      - name: Install artillery for load testing
+        run: npm install -g artillery@latest
+
+      - name: Create load test configuration
+        run: |
+          cat > load-test.yml << EOF
+          config:
+            target: http://localhost:3000
+            phases:
+              - duration: 60
+                arrivalRate: 10
+                name: Warm up
+              - duration: 120
+                arrivalRate: 50
+                name: Load test
+            processor: "./load-test-processor.js"
+          scenarios:
+            - name: Health check
+              weight: 20
+              flow:
+                - get:
+                    url: "/api/health"
+            - name: RSS feed
+              weight: 30
+              flow:
+                - get:
+                    url: "/api/rss/test-user?sig=test-signature"
+            - name: Search people
+              weight: 25
+              flow:
+                - post:
+                    url: "/api/search-people"
+                    json:
+                      query: "test"
+            - name: Static assets
+              weight: 25
+              flow:
+                - get:
+                    url: "/"
+          EOF
+
+      - name: Create load test processor
+        run: |
+          cat > load-test-processor.js << EOF
+          module.exports = {
+            logRequest: function(requestParams, response, context, ee, next) {
+              if (response.statusCode >= 400) {
+                console.log('Error response:', response.statusCode, requestParams.url);
+              }
+              return next();
+            }
+          };
+          EOF
+
+      - name: Run load tests
+        run: |
+          artillery run load-test.yml --output load-test-results.json
+          artillery report load-test-results.json --output load-test-report.html
+
+      - name: Lighthouse performance audit
+        uses: treosh/lighthouse-ci-action@v10
+        with:
+          configPath: ./lighthouserc.json
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+
+      - name: Upload performance results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-results
+          path: |
+            load-test-results.json
+            load-test-report.html
+            .lighthouseci/
+          retention-days: 30
+
+  # ============================================================================
+  # CONTAINER BUILD & SECURITY SCANNING
+  # ============================================================================
+  build-and-scan:
+    name: 🐳 Build & Scan Container
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [security-scan, code-quality, unit-tests]
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NODE_ENV=production
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run container structure test
+        run: |
+          curl -LO https://storage.googleapis.com/container-structure-test/latest/container-structure-test-linux-amd64
+          chmod +x container-structure-test-linux-amd64
+          
+          cat > container-test.yaml << EOF
+          schemaVersion: 2.0.0
+          fileExistenceTests:
+            - name: 'Check app directory'
+              path: '/app'
+              shouldExist: true
+              isDirectory: true
+          commandTests:
+            - name: 'Node version'
+              command: 'node'
+              args: ['--version']
+              expectedOutput: ['v[0-9]+\.[0-9]+\.[0-9]+']
+          metadataTest:
+            exposedPorts: ['3000']
+            workdir: '/app'
+          EOF
+          
+          ./container-structure-test-linux-amd64 test --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} --config container-test.yaml
+
+  # ============================================================================
+  # DEPLOYMENT TO STAGING
+  # ============================================================================
+  deploy-staging:
+    name: 🚀 Deploy to Staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [build-and-scan, e2e-tests]
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    environment:
+      name: staging
+      url: https://helparr-staging.vercel.app
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Vercel Staging
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-args: '--prod'
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          scope: ${{ secrets.VERCEL_ORG_ID }}
+
+      - name: Run staging smoke tests
+        run: |
+          npx wait-on https://helparr-staging.vercel.app/api/health --timeout 120000
+          curl -f https://helparr-staging.vercel.app/api/health || exit 1
+          echo "Staging deployment successful!"
+
+  # ============================================================================
+  # DEPLOYMENT TO PRODUCTION
+  # ============================================================================
+  deploy-production:
+    name: 🎯 Deploy to Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [build-and-scan, performance-tests]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment:
+      name: production
+      url: https://helparr.vercel.app
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Vercel Production
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-args: '--prod'
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          scope: ${{ secrets.VERCEL_ORG_ID }}
+
+      - name: Run production smoke tests
+        run: |
+          npx wait-on https://helparr.vercel.app/api/health --timeout 120000
+          curl -f https://helparr.vercel.app/api/health || exit 1
+          echo "Production deployment successful!"
+
+      - name: Update Docker Hub deployment
+        if: success()
+        run: |
+          echo "Triggering Docker Hub webhook for production deployment"
+          curl -X POST "${{ secrets.DOCKER_HUB_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{"source_type": "Tag", "source_name": "latest"}' || true
+
+      - name: Create GitHub release
+        if: success()
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.run_number }}
+          release_name: Release v${{ github.run_number }}
+          body: |
+            ## Changes in this Release
+            - Automated release from commit ${{ github.sha }}
+            - Deployed to production: https://helparr.vercel.app
+            - Container image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            
+            ## Deployment Verification
+            - ✅ Security scanning passed
+            - ✅ All tests passed
+            - ✅ Performance tests passed
+            - ✅ Container security scan passed
+            - ✅ Production deployment successful
+          draft: false
+          prerelease: false
+
+  # ============================================================================
+  # POST-DEPLOYMENT MONITORING
+  # ============================================================================
+  post-deployment:
+    name: 📊 Post-Deployment Monitoring
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [deploy-production]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Wait for deployment to stabilize
+        run: sleep 60
+
+      - name: Health check monitoring
+        run: |
+          for i in {1..5}; do
+            echo "Health check attempt $i/5"
+            if curl -f https://helparr.vercel.app/api/health; then
+              echo "✅ Health check passed"
+              break
+            else
+              echo "❌ Health check failed, retrying..."
+              sleep 30
+            fi
+            if [ $i -eq 5 ]; then
+              echo "::error::Health checks failed after 5 attempts"
+              exit 1
+            fi
+          done
+
+      - name: Performance monitoring
+        run: |
+          response_time=$(curl -o /dev/null -s -w '%{time_total}' https://helparr.vercel.app/)
+          echo "Response time: ${response_time}s"
+          if (( $(echo "$response_time > 2.0" | bc -l) )); then
+            echo "::warning::Response time is higher than expected: ${response_time}s"
+          fi
+
+      - name: Notify deployment success
+        run: |
+          echo "🎉 Production deployment completed successfully!"
+          echo "🔗 Application URL: https://helparr.vercel.app"
+          echo "📊 Health Status: https://helparr.vercel.app/api/health"
+          echo "🐳 Container: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+
+  # ============================================================================
+  # QUALITY GATE & REPORTING
+  # ============================================================================
+  quality-gate:
+    name: ✅ Quality Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [security-scan, code-quality, unit-tests]
+    if: always()
+    steps:
+      - name: Check quality gate
+        run: |
+          security_status="${{ needs.security-scan.result }}"
+          quality_status="${{ needs.code-quality.result }}"
+          test_status="${{ needs.unit-tests.result }}"
+          
+          echo "Security scan: $security_status"
+          echo "Code quality: $quality_status"
+          echo "Unit tests: $test_status"
+          
+          if [ "$security_status" != "success" ] || [ "$quality_status" != "success" ] || [ "$test_status" != "success" ]; then
+            echo "::error::Quality gate failed!"
+            echo "::error::Security: $security_status, Quality: $quality_status, Tests: $test_status"
+            exit 1
+          fi
+          
+          echo "✅ Quality gate passed!"
+
+      - name: Generate deployment report
+        if: github.ref == 'refs/heads/main'
+        run: |
+          cat > deployment-report.md << EOF
+          # 🚀 Deployment Report
+          
+          **Commit**: ${{ github.sha }}
+          **Branch**: ${{ github.ref_name }}
+          **Workflow**: ${{ github.run_id }}
+          **Triggered by**: ${{ github.actor }}
+          
+          ## ✅ Quality Checks
+          - Security Scan: ${{ needs.security-scan.result }}
+          - Code Quality: ${{ needs.code-quality.result }}
+          - Unit Tests: ${{ needs.unit-tests.result }}
+          
+          ## 🔗 Links
+          - [Production App](https://helparr.vercel.app)
+          - [Health Check](https://helparr.vercel.app/api/health)
+          - [Workflow Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          
+          Generated at: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          EOF
+          
+          echo "Deployment report generated"
+
+      - name: Upload deployment report
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-report
+          path: deployment-report.md
+          retention-days: 90

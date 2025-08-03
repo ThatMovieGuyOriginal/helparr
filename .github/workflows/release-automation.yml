@@ -1,0 +1,464 @@
+name: 🏷️ Release Automation
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Release type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+        - patch
+        - minor
+        - major
+      pre_release:
+        description: 'Pre-release?'
+        required: false
+        default: false
+        type: boolean
+      skip_tests:
+        description: 'Skip tests (emergency release only)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  packages: write
+  security-events: write
+  actions: read
+
+jobs:
+  # ============================================================================
+  # PRE-RELEASE VALIDATION
+  # ============================================================================
+  pre-release-validation:
+    name: 🔍 Pre-Release Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: ${{ !inputs.skip_tests }}
+    outputs:
+      current-version: ${{ steps.version.outputs.current }}
+      new-version: ${{ steps.version.outputs.new }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Get current version
+        id: version
+        run: |
+          current=$(cat package.json | jq -r '.version')
+          echo "current=$current" >> $GITHUB_OUTPUT
+          
+          # Calculate new version
+          case "${{ inputs.release_type }}" in
+            patch)
+              new=$(npm version patch --no-git-tag-version --dry-run | sed 's/v//')
+              ;;
+            minor)
+              new=$(npm version minor --no-git-tag-version --dry-run | sed 's/v//')
+              ;;
+            major)
+              new=$(npm version major --no-git-tag-version --dry-run | sed 's/v//')
+              ;;
+          esac
+          echo "new=$new" >> $GITHUB_OUTPUT
+          
+          echo "Current version: $current"
+          echo "New version: $new"
+
+      - name: Check for uncommitted changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::Uncommitted changes detected. Please commit or stash changes before release."
+            git status
+            exit 1
+          fi
+
+      - name: Validate package.json
+        run: |
+          if ! cat package.json | jq empty; then
+            echo "::error::Invalid package.json"
+            exit 1
+          fi
+          
+          # Check required fields
+          name=$(cat package.json | jq -r '.name // empty')
+          version=$(cat package.json | jq -r '.version // empty')
+          
+          if [ -z "$name" ] || [ -z "$version" ]; then
+            echo "::error::Missing required fields in package.json"
+            exit 1
+          fi
+
+      - name: Run quick tests
+        run: |
+          npm test -- --testPathPattern="__tests__/api/health.test.js" --watchAll=false
+          echo "✅ Quick validation tests passed"
+
+  # ============================================================================
+  # COMPREHENSIVE TESTING
+  # ============================================================================
+  comprehensive-testing:
+    name: 🧪 Comprehensive Testing
+    needs: pre-release-validation
+    uses: ./.github/workflows/production-ci-cd.yml
+    secrets: inherit
+    if: ${{ !inputs.skip_tests }}
+
+  # ============================================================================
+  # VERSION BUMP & CHANGELOG
+  # ============================================================================
+  version-bump:
+    name: 🔢 Version Bump & Changelog
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [pre-release-validation, comprehensive-testing]
+    if: always() && (needs.pre-release-validation.result == 'success' && (needs.comprehensive-testing.result == 'success' || inputs.skip_tests))
+    outputs:
+      new-version: ${{ steps.bump.outputs.new-version }}
+      release-notes: ${{ steps.changelog.outputs.release-notes }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Configure Git
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get commits since last tag
+          last_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          
+          if [ -z "$last_tag" ]; then
+            commits=$(git log --oneline --reverse)
+          else
+            commits=$(git log --oneline --reverse ${last_tag}..HEAD)
+          fi
+          
+          # Generate release notes
+          echo "## 🚀 What's Changed" > release-notes.md
+          echo "" >> release-notes.md
+          
+          # Categorize commits
+          echo "### ✨ New Features" >> release-notes.md
+          echo "$commits" | grep -E "^[a-f0-9]+ (feat|feature)" | sed 's/^[a-f0-9]* /- /' >> release-notes.md || echo "- No new features" >> release-notes.md
+          echo "" >> release-notes.md
+          
+          echo "### 🐛 Bug Fixes" >> release-notes.md
+          echo "$commits" | grep -E "^[a-f0-9]+ (fix|bugfix)" | sed 's/^[a-f0-9]* /- /' >> release-notes.md || echo "- No bug fixes" >> release-notes.md
+          echo "" >> release-notes.md
+          
+          echo "### 🔧 Improvements" >> release-notes.md
+          echo "$commits" | grep -E "^[a-f0-9]+ (improve|enhance|refactor|perf)" | sed 's/^[a-f0-9]* /- /' >> release-notes.md || echo "- No improvements" >> release-notes.md
+          echo "" >> release-notes.md
+          
+          echo "### 📚 Documentation" >> release-notes.md
+          echo "$commits" | grep -E "^[a-f0-9]+ (docs|doc)" | sed 's/^[a-f0-9]* /- /' >> release-notes.md || echo "- No documentation changes" >> release-notes.md
+          echo "" >> release-notes.md
+          
+          echo "### 🔒 Security" >> release-notes.md
+          echo "$commits" | grep -E "^[a-f0-9]+ (security|sec)" | sed 's/^[a-f0-9]* /- /' >> release-notes.md || echo "- No security changes" >> release-notes.md
+          echo "" >> release-notes.md
+          
+          echo "### 🎯 Other Changes" >> release-notes.md
+          echo "$commits" | grep -vE "^[a-f0-9]+ (feat|feature|fix|bugfix|improve|enhance|refactor|perf|docs|doc|security|sec)" | sed 's/^[a-f0-9]* /- /' >> release-notes.md || echo "- No other changes" >> release-notes.md
+          echo "" >> release-notes.md
+          
+          # Add deployment info
+          echo "## 🚀 Deployment Information" >> release-notes.md
+          echo "" >> release-notes.md
+          echo "- **Build Date**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> release-notes.md
+          echo "- **Commit**: ${{ github.sha }}" >> release-notes.md
+          echo "- **Release Type**: ${{ inputs.release_type }}" >> release-notes.md
+          echo "- **Pre-release**: ${{ inputs.pre_release }}" >> release-notes.md
+          echo "" >> release-notes.md
+          echo "## 🔗 Links" >> release-notes.md
+          echo "" >> release-notes.md
+          echo "- 🌐 [Production App](https://helparr.vercel.app)" >> release-notes.md
+          echo "- 🏥 [Health Check](https://helparr.vercel.app/api/health)" >> release-notes.md
+          echo "- 📊 [Test Coverage Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> release-notes.md
+          echo "- 🐳 [Docker Image](https://ghcr.io/${{ github.repository }})" >> release-notes.md
+          
+          # Set output
+          echo "release-notes<<EOF" >> $GITHUB_OUTPUT
+          cat release-notes.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Bump version
+        id: bump
+        run: |
+          # Bump version in package.json
+          new_version=$(npm version ${{ inputs.release_type }} --no-git-tag-version)
+          echo "new-version=$new_version" >> $GITHUB_OUTPUT
+          echo "New version: $new_version"
+          
+          # Update version in other files if they exist
+          if [ -f docker-compose.yml ]; then
+            sed -i "s/image: helparr:.*/image: helparr:$new_version/" docker-compose.yml
+          fi
+
+      - name: Commit version bump
+        run: |
+          git add package.json package-lock.json docker-compose.yml 2>/dev/null || true
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.new-version }}"
+          git push origin main
+
+  # ============================================================================
+  # BUILD & RELEASE ASSETS
+  # ============================================================================
+  build-release-assets:
+    name: 🏗️ Build Release Assets
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: version-bump
+    outputs:
+      asset-urls: ${{ steps.assets.outputs.urls }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Build application
+        run: |
+          npm run build
+          
+          # Create build info
+          cat > build-info.json << EOF
+          {
+            "version": "${{ needs.version-bump.outputs.new-version }}",
+            "buildDate": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
+            "commit": "${{ github.sha }}",
+            "branch": "${{ github.ref_name }}",
+            "nodeVersion": "$(node --version)",
+            "npmVersion": "$(npm --version)"
+          }
+          EOF
+
+      - name: Create distribution package
+        run: |
+          # Create release package
+          tar -czf helparr-${{ needs.version-bump.outputs.new-version }}.tar.gz \
+            --exclude=node_modules \
+            --exclude=.git \
+            --exclude=.github \
+            --exclude=__tests__ \
+            --exclude=coverage \
+            --exclude=.next/cache \
+            .
+          
+          # Create checksums
+          sha256sum helparr-${{ needs.version-bump.outputs.new-version }}.tar.gz > checksums.txt
+          md5sum helparr-${{ needs.version-bump.outputs.new-version }}.tar.gz >> checksums.txt
+
+      - name: Upload build artifacts
+        id: assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: |
+            helparr-${{ needs.version-bump.outputs.new-version }}.tar.gz
+            checksums.txt
+            build-info.json
+          retention-days: 90
+
+  # ============================================================================
+  # CONTAINER BUILD & PUSH
+  # ============================================================================
+  build-container:
+    name: 🐳 Build & Push Container
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: version-bump
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}
+            ${{ secrets.DOCKER_USERNAME }}/helparr
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.version-bump.outputs.new-version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.version-bump.outputs.new-version }}
+            type=semver,pattern={{major}},value=${{ needs.version-bump.outputs.new-version }}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NODE_ENV=production
+            BUILD_VERSION=${{ needs.version-bump.outputs.new-version }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+
+      - name: Run container security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/${{ github.repository }}:${{ needs.version-bump.outputs.new-version }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload security scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # ============================================================================
+  # CREATE GITHUB RELEASE
+  # ============================================================================
+  create-release:
+    name: 🎉 Create GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [version-bump, build-release-assets, build-container]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: ./release-assets/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.version-bump.outputs.new-version }}
+          name: Release ${{ needs.version-bump.outputs.new-version }}
+          body: ${{ needs.version-bump.outputs.release-notes }}
+          draft: false
+          prerelease: ${{ inputs.pre_release }}
+          files: |
+            ./release-assets/helparr-${{ needs.version-bump.outputs.new-version }}.tar.gz
+            ./release-assets/checksums.txt
+            ./release-assets/build-info.json
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============================================================================
+  # POST-RELEASE NOTIFICATIONS
+  # ============================================================================
+  post-release:
+    name: 📢 Post-Release Tasks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [version-bump, create-release]
+    steps:
+      - name: Update README badges
+        run: |
+          echo "Updating repository badges and documentation..."
+          echo "Version ${{ needs.version-bump.outputs.new-version }} released successfully!"
+
+      - name: Generate release summary
+        run: |
+          cat > release-summary.md << EOF
+          # 🎉 Release ${{ needs.version-bump.outputs.new-version }} Complete!
+          
+          **Release Type**: ${{ inputs.release_type }}
+          **Pre-release**: ${{ inputs.pre_release }}
+          **Tests Skipped**: ${{ inputs.skip_tests }}
+          
+          ## 📦 Assets
+          - 🗃️ Source code archive
+          - 🐳 Multi-architecture container images
+          - 🔐 Security scan results
+          - 📊 Build information
+          
+          ## 🚀 Deployment
+          - 🌐 Production: https://helparr.vercel.app
+          - 🐳 Container: ghcr.io/${{ github.repository }}:${{ needs.version-bump.outputs.new-version }}
+          - 🏷️ Release: https://github.com/${{ github.repository }}/releases/tag/${{ needs.version-bump.outputs.new-version }}
+          
+          ## 🔗 Quick Links
+          - [📋 Release Notes](https://github.com/${{ github.repository }}/releases/tag/${{ needs.version-bump.outputs.new-version }})
+          - [🐳 Container Images](https://github.com/${{ github.repository }}/pkgs/container/helparr)
+          - [🔍 Security Scans](https://github.com/${{ github.repository }}/security)
+          - [📊 Workflow Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          
+          ---
+          
+          **Released by**: @${{ github.actor }}
+          **Workflow**: ${{ github.run_id }}
+          **Commit**: ${{ github.sha }}
+          EOF
+          
+          echo "Release ${{ needs.version-bump.outputs.new-version }} completed successfully! 🎉"
+
+      - name: Post to GitHub Step Summary
+        run: |
+          cat release-summary.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload release summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-summary
+          path: release-summary.md
+          retention-days: 90

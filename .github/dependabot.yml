@@ -1,0 +1,123 @@
+version: 2
+
+updates:
+  # Enable version updates for npm dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly" 
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "ThatMovieGuyOriginal"
+    assignees:
+      - "ThatMovieGuyOriginal"
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps-dev"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "npm"
+    ignore:
+      # Ignore major version updates for critical dependencies
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+    groups:
+      # Group testing dependencies together
+      testing-dependencies:
+        patterns:
+          - "@testing-library/*"
+          - "jest*"
+          - "playwright*"
+          - "vitest*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Group linting and formatting dependencies
+      linting-dependencies:
+        patterns:
+          - "eslint*"
+          - "prettier*"
+          - "@typescript-eslint/*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Group build and dev dependencies
+      build-dependencies:
+        patterns:
+          - "webpack*"
+          - "babel*"
+          - "postcss*"
+          - "tailwindcss*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Enable version updates for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "ThatMovieGuyOriginal"
+    assignees:
+      - "ThatMovieGuyOriginal"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    labels:
+      - "github-actions"
+      - "ci-cd"
+    groups:
+      # Group security-related actions
+      security-actions:
+        patterns:
+          - "github/codeql-action*"
+          - "aquasecurity/trivy-action*"
+          - "semgrep/semgrep-action*"
+          - "trufflesecurity/trufflehog*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Group deployment actions
+      deployment-actions:
+        patterns:
+          - "docker/*"
+          - "actions/deploy*"
+          - "*vercel*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Enable version updates for Docker
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "ThatMovieGuyOriginal"
+    assignees:
+      - "ThatMovieGuyOriginal"
+    commit-message:
+      prefix: "docker"
+      include: "scope"
+    labels:
+      - "docker"
+      - "container"
+    ignore:
+      # Pin specific versions for stability
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]

@@ -1,0 +1,362 @@
+name: 🔐 Security Monitoring & Compliance
+
+on:
+  schedule:
+    - cron: '0 6 * * *' # Daily at 6 AM UTC
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'package*.json'
+      - 'Dockerfile'
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  pull-requests: write
+
+jobs:
+  # ============================================================================
+  # DEPENDENCY VULNERABILITY SCANNING
+  # ============================================================================
+  dependency-scan:
+    name: 📦 Dependency Security Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Run comprehensive npm audit
+        run: |
+          echo "## NPM Security Audit Report" > audit-report.md
+          echo "Generated: $(date)" >> audit-report.md
+          echo "" >> audit-report.md
+          
+          npm audit --json > audit-results.json || true
+          
+          if [ -s audit-results.json ]; then
+            echo "### High Severity Vulnerabilities" >> audit-report.md
+            cat audit-results.json | jq -r '.vulnerabilities | to_entries[] | select(.value.severity == "high") | "- **\(.key)**: \(.value.via[0].title // "Security vulnerability")"' >> audit-report.md
+            
+            echo "" >> audit-report.md
+            echo "### Critical Severity Vulnerabilities" >> audit-report.md  
+            cat audit-results.json | jq -r '.vulnerabilities | to_entries[] | select(.value.severity == "critical") | "- **\(.key)**: \(.value.via[0].title // "Security vulnerability")"' >> audit-report.md
+            
+            # Create issue if critical vulnerabilities found
+            critical_count=$(cat audit-results.json | jq '.metadata.vulnerabilities.critical // 0')
+            if [ "$critical_count" -gt 0 ]; then
+              echo "::error::Found $critical_count critical vulnerabilities"
+              exit 1
+            fi
+          else
+            echo "✅ No vulnerabilities found" >> audit-report.md
+          fi
+
+      - name: Run Snyk security scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --json > snyk-results.json
+
+      - name: Upload Snyk results to GitHub
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: snyk.sarif
+
+      - name: Check for vulnerable dependencies
+        run: |
+          npm install -g retire
+          retire --js --node --outputformat json --outputpath retire-results.json || true
+          
+          if [ -s retire-results.json ]; then
+            echo "::warning::Potentially vulnerable dependencies found"
+            cat retire-results.json | jq -r '.[] | select(.results) | .file'
+          fi
+
+      - name: Upload audit artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-audit-results
+          path: |
+            audit-report.md
+            audit-results.json
+            snyk-results.json
+            retire-results.json
+          retention-days: 30
+
+  # ============================================================================
+  # SECRETS SCANNING & COMPLIANCE
+  # ============================================================================
+  secrets-compliance:
+    name: 🔑 Secrets & Compliance Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run TruffleHog secrets scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: main
+          head: HEAD
+          extra_args: --debug --only-verified
+
+      - name: Run detect-secrets
+        run: |
+          pip install detect-secrets
+          detect-secrets scan --all-files --baseline .secrets.baseline
+          if [ $? -ne 0 ]; then
+            echo "::error::New secrets detected!"
+            exit 1
+          fi
+
+      - name: Check for hardcoded credentials
+        run: |
+          # Check for common patterns
+          if grep -r -i --include="*.js" --include="*.ts" --include="*.json" \
+             -E "(password|passwd|pwd|secret|key|token|api_key|private_key)" . | \
+             grep -v node_modules | grep -v ".git" | grep -v "test" | grep -E "=\s*['\"][^'\"]+['\"]; then
+            echo "::warning::Potential hardcoded credentials found"
+            grep -r -i --include="*.js" --include="*.ts" --include="*.json" \
+              -E "(password|passwd|pwd|secret|key|token|api_key|private_key)" . | \
+              grep -v node_modules | grep -v ".git" | grep -v "test" | grep -E "=\s*['\"][^'\"]+['\"" | head -5
+          fi
+
+      - name: Dockerfile security scan
+        run: |
+          if [ -f Dockerfile ]; then
+            # Check for security best practices
+            echo "## Dockerfile Security Check" > dockerfile-security.md
+            
+            if grep -q "FROM.*:latest" Dockerfile; then
+              echo "❌ Using latest tag in FROM instruction" >> dockerfile-security.md
+              echo "::warning::Dockerfile uses 'latest' tag which is not recommended"
+            fi
+            
+            if grep -q "USER root" Dockerfile; then
+              echo "❌ Running as root user" >> dockerfile-security.md
+              echo "::warning::Dockerfile runs as root user"
+            fi
+            
+            if ! grep -q "USER " Dockerfile; then
+              echo "❌ No USER instruction found" >> dockerfile-security.md
+              echo "::warning::Dockerfile doesn't specify USER instruction"
+            fi
+            
+            if grep -q "ADD " Dockerfile; then
+              echo "⚠️ Using ADD instead of COPY" >> dockerfile-security.md
+              echo "::warning::Consider using COPY instead of ADD"
+            fi
+          fi
+
+  # ============================================================================
+  # INFRASTRUCTURE SECURITY SCAN
+  # ============================================================================
+  infrastructure-scan:
+    name: 🏗️ Infrastructure Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Checkov IaC scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          framework: dockerfile,github_actions,secrets
+          output_format: sarif
+          output_file_path: checkov-results.sarif
+
+      - name: Upload Checkov results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: checkov-results.sarif
+
+      - name: GitHub Actions security scan
+        run: |
+          # Check for security issues in workflows
+          find .github/workflows -name "*.yml" -o -name "*.yaml" | while read workflow; do
+            echo "Checking workflow: $workflow"
+            
+            # Check for pull_request_target usage
+            if grep -q "pull_request_target" "$workflow"; then
+              echo "::warning::$workflow uses pull_request_target - ensure proper security measures"
+            fi
+            
+            # Check for checkout with ref
+            if grep -A 2 "uses: actions/checkout" "$workflow" | grep -q "ref:"; then
+              echo "::warning::$workflow uses checkout with ref - potential security risk"
+            fi
+            
+            # Check for script injection vulnerabilities
+            if grep -E "\$\{\{\s*github\." "$workflow" | grep -v "github.token" | grep -v "github.actor"; then
+              echo "::warning::$workflow may contain script injection vulnerabilities"
+            fi
+          done
+
+  # ============================================================================
+  # COMPLIANCE & POLICY ENFORCEMENT
+  # ============================================================================
+  compliance-check:
+    name: 📋 Compliance & Policy Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check branch protection rules
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Checking branch protection for main branch..."
+          gh api repos/${{ github.repository }}/branches/main/protection \
+            --jq '.required_status_checks.contexts[]' > protected-checks.txt || echo "No protection rules found"
+          
+          if [ -s protected-checks.txt ]; then
+            echo "✅ Branch protection is enabled"
+            echo "Protected status checks:"
+            cat protected-checks.txt
+          else
+            echo "⚠️ No branch protection rules found"
+          fi
+
+      - name: Check security policy
+        run: |
+          if [ -f SECURITY.md ]; then
+            echo "✅ Security policy exists"
+          else
+            echo "⚠️ No security policy (SECURITY.md) found"
+          fi
+          
+          if [ -f CODE_OF_CONDUCT.md ]; then
+            echo "✅ Code of conduct exists"
+          else
+            echo "⚠️ No code of conduct found"
+          fi
+
+      - name: License compliance check
+        run: |
+          if [ -f LICENSE ]; then
+            echo "✅ License file exists"
+            head -3 LICENSE
+          else
+            echo "⚠️ No license file found"
+          fi
+          
+          # Check for package.json license
+          if [ -f package.json ]; then
+            license=$(cat package.json | jq -r '.license // "No license specified"')
+            echo "Package.json license: $license"
+          fi
+
+      - name: Check required files
+        run: |
+          required_files=("README.md" ".gitignore" "package.json")
+          missing_files=()
+          
+          for file in "${required_files[@]}"; do
+            if [ ! -f "$file" ]; then
+              missing_files+=("$file")
+            fi
+          done
+          
+          if [ ${#missing_files[@]} -gt 0 ]; then
+            echo "::warning::Missing required files: ${missing_files[*]}"
+          else
+            echo "✅ All required files present"
+          fi
+
+  # ============================================================================
+  # SECURITY REPORTING
+  # ============================================================================
+  security-report:
+    name: 📊 Security Dashboard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [dependency-scan, secrets-compliance, infrastructure-scan, compliance-check]
+    if: always()
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: security-audit-results
+          path: ./security-results/
+
+      - name: Generate security dashboard
+        run: |
+          cat > security-dashboard.md << EOF
+          # 🔐 Security Dashboard
+          
+          **Scan Date**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          **Repository**: ${{ github.repository }}
+          **Branch**: ${{ github.ref_name }}
+          **Commit**: ${{ github.sha }}
+          
+          ## 🎯 Scan Results
+          
+          | Category | Status | Details |
+          |----------|--------|---------|
+          | Dependency Scan | ${{ needs.dependency-scan.result }} | NPM Audit + Snyk |
+          | Secrets Compliance | ${{ needs.secrets-compliance.result }} | TruffleHog + detect-secrets |
+          | Infrastructure | ${{ needs.infrastructure-scan.result }} | Checkov IaC scan |
+          | Compliance | ${{ needs.compliance-check.result }} | Branch protection + policies |
+          
+          ## 📈 Security Metrics
+          
+          - **Total Scans**: 4
+          - **Passed**: $(echo '${{ needs.dependency-scan.result }} ${{ needs.secrets-compliance.result }} ${{ needs.infrastructure-scan.result }} ${{ needs.compliance-check.result }}' | grep -o success | wc -l)
+          - **Failed**: $(echo '${{ needs.dependency-scan.result }} ${{ needs.secrets-compliance.result }} ${{ needs.infrastructure-scan.result }} ${{ needs.compliance-check.result }}' | grep -o failure | wc -l)
+          
+          ## 🔗 Resources
+          
+          - [GitHub Security Advisories](https://github.com/${{ github.repository }}/security/advisories)
+          - [Dependabot Alerts](https://github.com/${{ github.repository }}/security/dependabot)
+          - [Code Scanning Alerts](https://github.com/${{ github.repository }}/security/code-scanning)
+          - [Secret Scanning Alerts](https://github.com/${{ github.repository }}/security/secret-scanning)
+          
+          ---
+          
+          **Next Scan**: Tomorrow at 06:00 UTC
+          **Workflow**: [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          EOF
+
+      - name: Upload security dashboard
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-dashboard
+          path: security-dashboard.md
+          retention-days: 90
+
+      - name: Post security summary
+        if: github.event_name == 'schedule'
+        run: |
+          echo "## 🔐 Daily Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Dependency Scan: ${{ needs.dependency-scan.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Secrets Compliance: ${{ needs.secrets-compliance.result }}" >> $GITHUB_STEP_SUMMARY  
+          echo "- Infrastructure Scan: ${{ needs.infrastructure-scan.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Compliance Check: ${{ needs.compliance-check.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📊 [View detailed security dashboard](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
