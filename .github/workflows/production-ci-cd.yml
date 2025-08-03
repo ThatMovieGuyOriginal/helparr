@@ -395,7 +395,7 @@ jobs:
           artillery report load-test-results.json --output load-test-report.html
 
       - name: Lighthouse performance audit
-        uses: treosh/lighthouse-ci-action@v10
+        uses: treosh/lighthouse-ci-action@v12
         with:
           configPath: ./lighthouserc.json
           uploadArtifacts: true
