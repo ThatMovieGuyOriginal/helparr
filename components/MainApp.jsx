@@ -10,7 +10,33 @@ import SearchView from './views/SearchView';
 import ManageView from './views/ManageView';
 import HelpView from './views/HelpView';
 import MessageContainer from './ui/MessageContainer';
-import logger from '../utils/clientLogger';
+// Client-safe logging that works in both SSR and browser environments
+const logger = {
+  error: (message, ...args) => {
+    if (typeof console !== 'undefined') {
+      // eslint-disable-next-line no-console
+      console.error(`[${new Date().toISOString()}] ERROR:`, message, ...args);
+    }
+  },
+  warn: (message, ...args) => {
+    if (typeof console !== 'undefined') {
+      // eslint-disable-next-line no-console
+      console.warn(`[${new Date().toISOString()}] WARN:`, message, ...args);
+    }
+  },
+  info: (message, ...args) => {
+    if (typeof console !== 'undefined') {
+      // eslint-disable-next-line no-console
+      console.log(`[${new Date().toISOString()}] INFO:`, message, ...args);
+    }
+  },
+  debug: (message, ...args) => {
+    if (typeof console !== 'undefined') {
+      // eslint-disable-next-line no-console
+      console.log(`[${new Date().toISOString()}] DEBUG:`, message, ...args);
+    }
+  }
+};
 
 export default function MainApp({ 
   userId, 
