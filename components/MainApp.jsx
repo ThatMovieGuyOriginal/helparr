@@ -10,8 +10,7 @@ import SearchView from './views/SearchView';
 import ManageView from './views/ManageView';
 import HelpView from './views/HelpView';
 import MessageContainer from './ui/MessageContainer';
-
-const logger = require('../utils/logger');
+import logger from '../utils/clientLogger';
 
 export default function MainApp({ 
   userId, 

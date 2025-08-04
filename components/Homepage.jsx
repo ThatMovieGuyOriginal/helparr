@@ -7,8 +7,7 @@ import DemoView from './DemoView';
 import SetupView from './SetupView';
 import MainApp from './MainApp';
 import RSSUrlBar from './ui/RSSUrlBar';
-
-const logger = require('../utils/logger');
+import logger from '../utils/clientLogger';
 
 export default function Homepage() {
   const [view, setView] = useState('demo'); // Start with demo

@@ -1,7 +1,8 @@
 // components/ErrorBoundary.jsx
 
 import React from 'react';
-const logger = require('../utils/logger');
+
+import logger from '../utils/clientLogger';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
