@@ -1,5 +1,6 @@
 // components/MainApp.jsx
 import { useState, useEffect } from 'react';
+
 import { useSourceSearch } from '../hooks/useSourceSearch';
 import { useFilmography } from '../hooks/useFilmography';
 import { useUserManagement } from '../hooks/useUserManagement';
@@ -9,6 +10,8 @@ import SearchView from './views/SearchView';
 import ManageView from './views/ManageView';
 import HelpView from './views/HelpView';
 import MessageContainer from './ui/MessageContainer';
+
+const logger = require('../utils/logger');
 
 export default function MainApp({ 
   userId, 
@@ -36,55 +39,6 @@ export default function MainApp({
   const sourceSearch = useSourceSearch(userId, tenantSecret);
   const filmography = useFilmography(userId, tenantSecret);
   const userManagement = useUserManagement();
-
-  // Pass auto-sync status up to parent for RSS URL bar
-  useEffect(() => {
-    if (setAutoSyncStatus) {
-      setAutoSyncStatus(userManagement.autoSyncStatus);
-    }
-  }, [userManagement.autoSyncStatus, setAutoSyncStatus]);
-
-  // Load saved data on mount
-  useEffect(() => {
-    if (!userId || !tenantSecret) return;
-    
-    try {
-      const savedPeople = localStorage.getItem('people');
-      
-      if (savedPeople) {
-        const parsedPeople = JSON.parse(savedPeople);
-        setPeople(parsedPeople);
-        updateSelectedMovies(parsedPeople);
-      }
-
-      trackEvent('app_loaded', { 
-        hasSavedData: !!savedPeople, 
-        hasRssUrl: !!rssUrl,
-        peopleCount: savedPeople ? JSON.parse(savedPeople).length : 0
-      });
-    } catch (err) {
-      console.error('Failed to load saved data:', err);
-      setError('Failed to load your saved data. Starting fresh.');
-    }
-  }, [userId, tenantSecret, rssUrl]);
-
-  // Auto-clear messages
-  useEffect(() => {
-    if (error || success) {
-      const timer = setTimeout(() => {
-        setError('');
-        setSuccess('');
-      }, 7000);
-      return () => clearTimeout(timer);
-    }
-  }, [error, success]);
-
-  useEffect(() => {
-    if (copySuccess) {
-      const timer = setTimeout(() => setCopySuccess(false), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [copySuccess]);
 
   // Enhanced movie selection update with deduplication
   const updateSelectedMovies = (peopleData) => {
@@ -122,14 +76,63 @@ export default function MainApp({
       // Log deduplication stats for debugging
       if (allRawMovies.length !== deduplicatedMovies.length) {
         const duplicatesRemoved = allRawMovies.length - deduplicatedMovies.length;
-        console.log(`🎬 Deduplication: ${allRawMovies.length} total selections → ${deduplicatedMovies.length} unique movies (${duplicatesRemoved} duplicates removed)`);
+        logger.info(`🎬 Deduplication: ${allRawMovies.length} total selections → ${deduplicatedMovies.length} unique movies (${duplicatesRemoved} duplicates removed)`);
       }
       
     } catch (err) {
-      console.error('Failed to update selected movies:', err);
+      logger.error('Failed to update selected movies:', err);
       setError('Failed to update movie selection');
     }
   };
+
+  // Pass auto-sync status up to parent for RSS URL bar
+  useEffect(() => {
+    if (setAutoSyncStatus) {
+      setAutoSyncStatus(userManagement.autoSyncStatus);
+    }
+  }, [userManagement.autoSyncStatus, setAutoSyncStatus]);
+
+  // Load saved data on mount
+  useEffect(() => {
+    if (!userId || !tenantSecret) return;
+    
+    try {
+      const savedPeople = localStorage.getItem('people');
+      
+      if (savedPeople) {
+        const parsedPeople = JSON.parse(savedPeople);
+        setPeople(parsedPeople);
+        updateSelectedMovies(parsedPeople);
+      }
+
+      trackEvent('app_loaded', { 
+        hasSavedData: Boolean(savedPeople), 
+        hasRssUrl: Boolean(rssUrl),
+        peopleCount: savedPeople ? JSON.parse(savedPeople).length : 0
+      });
+    } catch (err) {
+      logger.error('Failed to load saved data:', err);
+      setError('Failed to load your saved data. Starting fresh.');
+    }
+  }, [userId, tenantSecret, rssUrl]);
+
+  // Auto-clear messages
+  useEffect(() => {
+    if (error || success) {
+      const timer = setTimeout(() => {
+        setError('');
+        setSuccess('');
+      }, 7000);
+      return () => clearTimeout(timer);
+    }
+  }, [error, success]);
+
+  useEffect(() => {
+    if (copySuccess) {
+      const timer = setTimeout(() => setCopySuccess(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [copySuccess]);
 
   // Copy RSS URL to clipboard
   const copyRssUrl = async () => {
@@ -253,7 +256,6 @@ export default function MainApp({
         // Manage View Props (enhanced with deduplication data)
         selectedMovies={selectedMovies} // Deduplicated for RSS
         rawSelectedMovies={rawSelectedMovies} // For display/stats
-        people={people} // For duplicate detection
         expandedPeople={expandedPeople}
         setExpandedPeople={setExpandedPeople}
         rssUrl={rssUrl}

@@ -1,11 +1,14 @@
 // components/Homepage.jsx
 import { useState, useEffect, useCallback } from 'react';
+
 import { trackEvent } from '../utils/analytics';
 import DataMigration from '../utils/dataMigration';
 import DemoView from './DemoView';
 import SetupView from './SetupView';
 import MainApp from './MainApp';
 import RSSUrlBar from './ui/RSSUrlBar';
+
+const logger = require('../utils/logger');
 
 export default function Homepage() {
   const [view, setView] = useState('demo'); // Start with demo
@@ -19,6 +22,18 @@ export default function Homepage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [copySuccess, setCopySuccess] = useState(false);
+
+  // Update movie count from localStorage
+  const updateMovieCountFromStorage = useCallback(() => {
+    try {
+      const savedMovies = localStorage.getItem('selectedMovies');
+      const count = savedMovies ? JSON.parse(savedMovies).length : 0;
+      setMovieCount(count);
+    } catch (error) {
+      logger.warn('Failed to load movie count from storage:', error);
+      setMovieCount(0);
+    }
+  }, []);
 
   useEffect(() => {
     // Run data migration for backward compatibility
@@ -44,11 +59,11 @@ export default function Homepage() {
       setView('app'); // Skip to main app
       
       trackEvent('returning_user', { 
-        hasRssUrl: !!savedRssUrl,
-        userId: id.substring(0, 8) + '***' // Partial for privacy
+        hasRssUrl: Boolean(savedRssUrl),
+        userId: `${id.substring(0, 8)}***` // Partial for privacy
       });
     } else {
-      trackEvent('new_user', { userId: id.substring(0, 8) + '***' });
+      trackEvent('new_user', { userId: `${id.substring(0, 8)}***` });
     }
 
     // Initialize movie count from localStorage
@@ -58,24 +73,12 @@ export default function Homepage() {
     const handleStorageChange = (e) => {
       if (e.key === 'lastRSSAccess') {
         // RSS was accessed, this can help with countdown calculation
-        console.log('RSS access detected for countdown calculation');
+        logger.info('RSS access detected for countdown calculation');
       }
     };
 
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
-
-  // Update movie count from localStorage
-  const updateMovieCountFromStorage = useCallback(() => {
-    try {
-      const savedMovies = localStorage.getItem('selectedMovies');
-      const count = savedMovies ? JSON.parse(savedMovies).length : 0;
-      setMovieCount(count);
-    } catch (error) {
-      console.warn('Failed to load movie count from storage:', error);
-      setMovieCount(0);
-    }
   }, []);
 
   // Handle movie count changes (called from auto-sync and manual operations)
@@ -118,7 +121,7 @@ export default function Homepage() {
     
     try {
       // Test TMDb API key first to fail fast
-      console.log('Testing TMDb API key...');
+      logger.info('Testing TMDb API key...');
       const testResponse = await fetch(`https://api.themoviedb.org/3/configuration?api_key=${apiKey}`);
       if (!testResponse.ok) {
         if (testResponse.status === 401) {
@@ -128,7 +131,7 @@ export default function Homepage() {
       }
       
       // Create user account and get permanent RSS URL
-      console.log('Creating user account...');
+      logger.info('Creating user account...');
       const response = await fetch('/api/create-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -168,7 +171,7 @@ export default function Homepage() {
       });
       
     } catch (err) {
-      console.error('Setup error:', err);
+      logger.error('Setup error:', err);
       setError(err.message);
       trackEvent('setup_failed', { error: err.message });
     } finally {

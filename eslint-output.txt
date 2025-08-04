@@ -1,0 +1,185 @@
+
+> helparr@2.0.0 lint
+> next lint
+
+
+./app/api/admin/analytics/route.js
+24:35  Warning: 'request' is defined but never used. Allowed unused args must match /^_/u.  no-unused-vars
+24:44  Warning: 'data' is defined but never used. Allowed unused args must match /^_/u.  no-unused-vars
+24:50  Warning: 'context' is defined but never used. Allowed unused args must match /^_/u.  no-unused-vars
+49:7  Warning: Expected property shorthand.  object-shorthand
+71:7  Warning: Expected property shorthand.  object-shorthand
+72:7  Warning: Expected property shorthand.  object-shorthand
+
+./app/api/admin/keys/route.js
+26:35  Warning: 'request' is defined but never used. Allowed unused args must match /^_/u.  no-unused-vars
+26:44  Warning: 'data' is defined but never used. Allowed unused args must match /^_/u.  no-unused-vars
+26:50  Warning: 'context' is defined but never used. Allowed unused args must match /^_/u.  no-unused-vars
+112:47  Warning: 'data' is defined but never used. Allowed unused args must match /^_/u.  no-unused-vars
+112:53  Warning: 'context' is defined but never used. Allowed unused args must match /^_/u.  no-unused-vars
+139:24  Warning: Variable Assigned to Object Injection Sink  security/detect-object-injection
+
+./app/api/analytics/route.js
+21:18  Warning: Unexpected string concatenation.  prefer-template
+23:17  Warning: Unexpected string concatenation.  prefer-template
+24:18  Warning: Unexpected string concatenation.  prefer-template
+
+./app/api/create-user/route.js
+3:1  Warning: There should be at least one empty line between import groups  import/order
+
+./app/api/demo/filmography/route.js
+208:38  Warning: Unexpected string concatenation.  prefer-template
+360:11  Warning: 'movieLimit' is assigned a value but never used. Allowed unused vars must match /^_/u.  no-unused-vars
+360:24  Warning: Variable Assigned to Object Injection Sink  security/detect-object-injection
+
+./app/api/demo/search/route.js
+39:17  Warning: Generic Object Injection Sink  security/detect-object-injection
+
+./app/api/get-source-movies/route.js
+9:7  Warning: 'sourceMoviesCache' is assigned a value but never used. Allowed unused vars must match /^_/u.  no-unused-vars
+
+./app/api/health/route.js
+9:27  Warning: 'request' is defined but never used. Allowed unused args must match /^_/u.  no-unused-vars
+143:7  Warning: Generic Object Injection Sink  security/detect-object-injection
+204:28  Warning: 'request' is defined but never used. Allowed unused args must match /^_/u.  no-unused-vars
+
+./app/api/rss/[tenant]/route.js
+140:18  Warning: Unexpected string concatenation.  prefer-template
+147:15  Warning: Unexpected string concatenation.  prefer-template
+
+./app/api/static/[resource]/route.js
+33:21  Warning: Generic Object Injection Sink  security/detect-object-injection
+37:36  Warning: Variable Assigned to Object Injection Sink  security/detect-object-injection
+
+./app/api/sync-list/route.js
+38:7  Warning: Expected property shorthand.  object-shorthand
+39:7  Warning: Expected property shorthand.  object-shorthand
+
+./pages/_app.js
+4:1  Warning: There should be at least one empty line between import groups  import/order
+
+./components/DemoView.jsx
+2:1  Warning: There should be at least one empty line between import groups  import/order
+3:1  Warning: There should be at least one empty line between import groups  import/order
+71:25  Warning: Generic Object Injection Sink  security/detect-object-injection
+117:6  Warning: React Hook useEffect has a missing dependency: 'handleDemoSearch'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+366:27  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+411:27  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+507:23  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./components/ErrorBoundary.jsx
+11:35  Warning: 'error' is defined but never used. Allowed unused args must match /^_/u.  no-unused-vars
+16:5  Error: Unexpected console statement.  no-console
+17:5  Error: Unexpected console statement.  no-console
+18:5  Error: Unexpected console statement.  no-console
+21:7  Warning: Expected property shorthand.  object-shorthand
+22:7  Warning: Expected property shorthand.  object-shorthand
+64:68  Warning: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+64:93  Warning: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+90:21  Error: Unexpected console statement.  no-console
+100:21  Error: Unexpected console statement.  no-console
+
+./components/filmography/SearchFilmographySelector.jsx
+9:3  Warning: 'personName' is defined but never used. Allowed unused args must match /^_/u.  no-unused-vars
+10:3  Warning: 'role' is defined but never used. Allowed unused args must match /^_/u.  no-unused-vars
+175:17  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./components/Homepage.jsx
+2:1  Warning: There should be at least one empty line between import groups  import/order
+4:1  Warning: There should be at least one empty line between import groups  import/order
+13:10  Warning: 'tmdbKey' is assigned a value but never used. Allowed unused vars must match /^_/u.  no-unused-vars
+48:17  Warning: Unexpected string concatenation.  prefer-template
+51:40  Warning: Unexpected string concatenation.  prefer-template
+55:5  Error: 'updateMovieCountFromStorage' was used before it was defined.  no-use-before-define
+61:9  Error: Unexpected console statement.  no-console
+67:6  Warning: React Hook useEffect has a missing dependency: 'updateMovieCountFromStorage'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+76:7  Error: Unexpected console statement.  no-console
+121:7  Error: Unexpected console statement.  no-console
+131:7  Error: Unexpected console statement.  no-console
+171:7  Error: Unexpected console statement.  no-console
+
+./components/MainApp.jsx
+2:1  Warning: There should be at least one empty line between import groups  import/order
+7:1  Warning: There should be at least one empty line between import groups  import/order
+57:9  Error: 'updateSelectedMovies' was used before it was defined.  no-use-before-define
+66:7  Error: Unexpected console statement.  no-console
+69:6  Warning: React Hook useEffect has a missing dependency: 'updateSelectedMovies'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+125:9  Error: Unexpected console statement.  no-console
+129:7  Error: Unexpected console statement.  no-console
+256:9  Error: No duplicate props allowed  react/jsx-no-duplicate-props
+
+./components/person/PersonManager.jsx
+2:1  Warning: There should be at least one empty line between import groups  import/order
+118:15  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./components/SetupView.jsx
+2:1  Warning: There should be at least one empty line between import groups  import/order
+
+./components/ui/RSSUrlBar.jsx
+2:1  Warning: There should be at least one empty line between import groups  import/order
+18:13  Warning: 'timeSinceAccess' is assigned a value but never used. Allowed unused vars must match /^_/u.  no-unused-vars
+147:32  Warning: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+147:34  Warning: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+148:33  Warning: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+148:42  Warning: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+159:30  Warning: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+159:39  Warning: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+
+./components/views/AdminView.jsx
+48:16  Warning: Unexpected string concatenation.  prefer-template
+63:6  Warning: React Hook useEffect has a missing dependency: 'fetchAnalytics'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./components/views/HelpView.jsx
+154:26  Warning: `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.  react/no-unescaped-entities
+154:35  Warning: `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.  react/no-unescaped-entities
+162:32  Warning: `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.  react/no-unescaped-entities
+
+./components/views/ManageView.jsx
+3:1  Warning: There should be at least one empty line between import groups  import/order
+25:3  Warning: 'sourceSearch' is defined but never used. Allowed unused args must match /^_/u.  no-unused-vars
+26:3  Warning: 'filmography' is defined but never used. Allowed unused args must match /^_/u.  no-unused-vars
+106:16  Warning: Unexpected string concatenation.  prefer-template
+171:16  Warning: Unexpected string concatenation.  prefer-template
+310:19  Warning: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+310:28  Warning: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+560:30  Warning: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+560:39  Warning: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+
+./components/views/SearchView.jsx
+17:3  Warning: 'rssUrl' is defined but never used. Allowed unused args must match /^_/u.  no-unused-vars
+215:25  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+261:25  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./lib/kv.js
+15:7  Warning: 'memoryStore' is assigned a value but never used. Allowed unused vars must match /^_/u.  no-unused-vars
+54:19  Warning: Found non-literal argument to RegExp Constructor  security/detect-non-literal-regexp
+111:7  Error: Unexpected console statement.  no-console
+116:5  Error: Unexpected console statement.  no-console
+128:7  Error: Unexpected console statement.  no-console
+130:9  Error: Unexpected console statement.  no-console
+136:7  Error: Unexpected console statement.  no-console
+145:5  Error: Unexpected console statement.  no-console
+148:5  Error: Unexpected console statement.  no-console
+149:5  Error: Unexpected console statement.  no-console
+167:7  Error: Unexpected console statement.  no-console
+190:7  Error: Unexpected console statement.  no-console
+193:5  Error: Unexpected console statement.  no-console
+204:7  Error: Unexpected console statement.  no-console
+209:5  Error: Unexpected console statement.  no-console
+222:5  Error: Unexpected console statement.  no-console
+233:5  Error: Unexpected console statement.  no-console
+245:5  Warning: Expected property shorthand.  object-shorthand
+
+./lib/RSSManager.js
+2:36  Warning: There should be at least one empty line between import groups  import/order
+3:42  Warning: `../utils/movieDeduplication` import should occur before import of `./kv`  import/order
+43:7  Error: Unexpected console statement.  no-console
+63:7  Error: Unexpected console statement.  no-console
+75:5  Error: Unexpected console statement.  no-console
+118:24  Warning: Unexpected string concatenation.  prefer-template
+181:7  Error: Unexpected console statement.  no-console
+191:7  Error: Unexpected console statement.  no-console
+235:11  Error: Unexpected console statement.  no-console
+242:7  Error: Unexpected console statement.  no-console
+
+info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/basic-features/eslint#disabling-rules

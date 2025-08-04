@@ -1,7 +1,9 @@
 // pages/_app.js
 
 import '../styles/globals.css';
+
 import Head from 'next/head';
+
 import ErrorBoundary from '../components/ErrorBoundary';
 
 export default function App({ Component, pageProps }) {

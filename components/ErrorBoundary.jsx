@@ -1,6 +1,7 @@
 // components/ErrorBoundary.jsx
 
 import React from 'react';
+const logger = require('../utils/logger');
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -13,13 +14,13 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error('🚨 ERROR BOUNDARY CAUGHT:', error);
-    console.error('🚨 ERROR INFO:', errorInfo);
-    console.error('🚨 COMPONENT STACK:', errorInfo.componentStack);
+    logger.error('🚨 ERROR BOUNDARY CAUGHT:', error);
+    logger.error('🚨 ERROR INFO:', errorInfo);
+    logger.error('🚨 COMPONENT STACK:', errorInfo.componentStack);
     
     this.setState({
-      error: error,
-      errorInfo: errorInfo
+      error,
+      errorInfo
     });
   }
 
@@ -87,7 +88,8 @@ class ErrorBoundary extends React.Component {
                 
                 <button
                   onClick={() => {
-                    console.clear();
+                    // Clear console is a development tool, use logger for production
+                    logger.info('🔄 Error boundary reset requested');
                     this.setState({ hasError: false, error: null, errorInfo: null });
                   }}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded mr-3"
@@ -97,7 +99,7 @@ class ErrorBoundary extends React.Component {
 
                 <button
                   onClick={() => {
-                    console.log('🚨 FULL ERROR DETAILS:', {
+                    logger.error('🚨 FULL ERROR DETAILS:', {
                       error: this.state.error,
                       errorInfo: this.state.errorInfo,
                       timestamp: new Date().toISOString(),
