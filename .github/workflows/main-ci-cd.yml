@@ -180,10 +180,58 @@ jobs:
           NEXT_PUBLIC_BASE_URL=http://localhost:3000
           NODE_ENV=production
           EOF
-          npm start &
           
-          # Wait for app to be ready
-          timeout 60 bash -c 'until curl -f http://localhost:3000/api/health >/dev/null 2>&1; do sleep 2; done'
+          # Start app in background and save PID
+          npm start &
+          APP_PID=$!
+          echo "Started app with PID: $APP_PID"
+          
+          # Wait for Redis to be ready first
+          echo "Waiting for Redis to be ready..."
+          for i in {1..30}; do
+            if redis-cli -h localhost -p 6379 ping >/dev/null 2>&1; then
+              echo "Redis is ready"
+              break
+            fi
+            echo "Waiting for Redis... ($i/30)"
+            sleep 1
+          done
+          
+          # Wait for app to be ready with more robust checking
+          echo "Waiting for app to be ready..."
+          APP_READY=false
+          for i in {1..60}; do
+            if curl -f http://localhost:3000/api/health >/dev/null 2>&1; then
+              echo "App is ready!"
+              APP_READY=true
+              break
+            fi
+            
+            # Check if app process is still running
+            if ! kill -0 $APP_PID 2>/dev/null; then
+              echo "❌ App process died during startup (attempt $i/60)"
+              echo "Process status:"
+              jobs
+              echo "Checking for any error logs..."
+              sleep 1
+              exit 1
+            fi
+            
+            echo "Waiting for app... ($i/60)"
+            sleep 2
+          done
+          
+          # Final verification
+          if [ "$APP_READY" = false ]; then
+            echo "❌ App failed to become ready within timeout"
+            echo "Final process check:"
+            kill -0 $APP_PID 2>/dev/null && echo "App process still running" || echo "App process died"
+            echo "Attempting final health check:"
+            curl -v http://localhost:3000/api/health || true
+            exit 1
+          fi
+          
+          echo "✅ App started successfully"
 
       - name: Run integration tests
         run: |
