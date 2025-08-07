@@ -60,6 +60,21 @@ export default function Homepage() {
     }
   }, []);
 
+  // Generate UUID that works across all browser environments
+  const generateUUID = () => {
+    // Try modern crypto.randomUUID first
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    
+    // Fallback for older browsers/environments
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  };
+
   useEffect(() => {
     // Run data migration for backward compatibility
     DataMigration.migrateUserData();
@@ -67,7 +82,7 @@ export default function Homepage() {
     // Generate or retrieve persistent user ID
     let id = localStorage.getItem('userId');
     if (!id) {
-      id = crypto.randomUUID();
+      id = generateUUID();
       localStorage.setItem('userId', id);
     }
     setUserId(id);
