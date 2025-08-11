@@ -30,7 +30,7 @@
     "@testing-library/jest-dom": "6.6.4",
     "@testing-library/react": "13.4.0",
     "autoprefixer": "10.4.16",
-    "eslint": "^8.57.1",
+    "eslint": "^9.33.0",
     "eslint-config-next": "^14.2.31",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-jest": "^29.0.1",
