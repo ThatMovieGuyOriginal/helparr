@@ -384,7 +384,7 @@ jobs:
           ref: main
 
       - name: Download release assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: release-assets
           path: ./release-assets/
