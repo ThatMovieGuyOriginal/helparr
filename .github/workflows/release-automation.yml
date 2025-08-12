@@ -43,7 +43,7 @@ jobs:
       new-version: ${{ steps.version.outputs.new }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -133,7 +133,7 @@ jobs:
       release-notes: ${{ steps.changelog.outputs.release-notes }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -241,7 +241,7 @@ jobs:
       asset-urls: ${{ steps.assets.outputs.urls }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: main
 
@@ -307,7 +307,7 @@ jobs:
     needs: version-bump
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: main
 
@@ -379,7 +379,7 @@ jobs:
     needs: [version-bump, build-release-assets, build-container]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: main
 
