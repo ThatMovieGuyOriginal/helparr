@@ -42,7 +42,7 @@
     "jest": "29.7.0",
     "jest-environment-jsdom": "29.7.0",
     "postcss": "8.5.6",
-    "tailwindcss": "3.3.6"
+    "tailwindcss": "4.1.12"
   },
   "engines": {
     "node": ">=18.0.0"
