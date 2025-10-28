@@ -288,7 +288,7 @@ jobs:
 
       - name: Upload build artifacts
         id: assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: release-assets
           path: |
@@ -457,7 +457,7 @@ jobs:
           cat release-summary.md >> $GITHUB_STEP_SUMMARY
 
       - name: Upload release summary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: release-summary
           path: release-summary.md
